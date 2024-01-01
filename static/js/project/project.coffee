@@ -9,19 +9,27 @@ class @Project
     @description = data.description
     @tags = data.tags
     @public = data.public
+    @unlisted = data.unlisted
     @platforms = data.platforms
     @controls = data.controls
     @type = data.type
     @orientation = data.orientation
     @graphics = data.graphics or "M1"
+    @language = data.language or "microscript_v1_i"
     @libs = data.libs or []
     @aspect = data.aspect
     @users = data.users
+    @tabs = data.tabs
+    @plugins = data.plugins
+    @libraries = data.libraries
+    @properties = data.properties or {}
+    @flags = data.flags or {}
 
     @file_types = ["source","sprite","map","asset","sound","music"]
     for f in @file_types
       @["#{f}_list"] = []
       @["#{f}_table"] = {}
+      @["#{f}_folder"] = new ProjectFolder null,f
 
     @locks = {}
     @lock_time = {}
@@ -54,8 +62,7 @@ class @Project
     @updateMapList()
     @updateSoundList()
     @updateMusicList()
-    if @graphics == "M3D"
-      @updateAssetList()
+    @updateAssetList()
     @loadDoc()
 
   loadDoc:()->
@@ -120,9 +127,7 @@ class @Project
     @notifyListeners("locks") if change
 
   changeSpriteName:(old,name)->
-    @sprite_table[name] = @sprite_table[old]
-    delete @sprite_table[old]
-
+    old = old.replace /-/g,"/"
     for map in @map_list
       changed = false
       for i in [0..map.width-1] by 1
@@ -163,6 +168,10 @@ class @Project
     else if msg.file.indexOf("sprites/") == 0
       name = msg.file.substring("sprites/".length,msg.file.indexOf(".png"))
       if @sprite_table[name]?
+        if msg.properties?
+          @sprite_table[name].properties = msg.properties
+          if msg.properties.fps?
+            @sprite_table[name].fps = msg.properties.fps
         @sprite_table[name].reload ()=>
           if name == @app.sprite_editor.selected_sprite
             @app.sprite_editor.currentSpriteUpdated()
@@ -174,6 +183,18 @@ class @Project
         @map_table[name].loadFile()
       else
         @updateMapList()
+    else if msg.file.indexOf("sounds/") == 0
+      name = msg.file.substring("sounds/".length,msg.file.length).split(".")[0]
+      if not @sound_table[name]?
+        @updateSoundList()
+    else if msg.file.indexOf("music/") == 0
+      name = msg.file.substring("music/".length,msg.file.length).split(".")[0]
+      if not @music_table[name]?
+        @updateMusicList()
+    else if msg.file.indexOf("assets/") == 0
+      name = msg.file.substring("assets/".length,msg.file.length).split(".")[0]
+      if not @asset_table[name]?
+        @updateAssetList()
 
   fileDeleted:(msg)->
     if msg.file.indexOf("ms/") == 0
@@ -182,6 +203,10 @@ class @Project
       @updateSpriteList()
     else if msg.file.indexOf("maps/") == 0
       @updateMapList()
+    else if msg.file.indexOf("sounds/") == 0
+      @updateSoundList()
+    else if msg.file.indexOf("music/") == 0
+      @updateMusicList()
 
   optionsUpdated:(data)->
     @slug = data.slug
@@ -197,6 +222,7 @@ class @Project
     s = new ProjectSprite @,sprite.file,null,null,sprite.properties,sprite.size
     @sprite_table[s.name] = s
     @sprite_list.push s
+    @sprite_folder.push s
     s
 
   getSprite:(name)->
@@ -214,6 +240,7 @@ class @Project
     sprite = new ProjectSprite @,filename+".png",width,height
     @sprite_table[sprite.name] = sprite
     @sprite_list.push sprite
+    @sprite_folder.push sprite
     @notifyListeners "spritelist"
     sprite
 
@@ -221,20 +248,23 @@ class @Project
     s = new ProjectSource @,file.file,file.size
     @source_table[s.name] = s
     @source_list.push s
+    @source_folder.push s
     s
 
   getSource:(name)->
     @source_table[name]
 
-  createSource:()->
-    count = 1
-    loop
-      filename = "source#{count++}"
-      break if not @getSource(filename)?
+  createSource:(basename="source")->
+    count = 2
+    filename = basename
+    while @getSource(filename)?
+      filename = "#{basename}#{count++}"
 
     source = new ProjectSource @,filename+".ms"
+    source.fetched = true
     @source_table[source.name] = source
     @source_list.push source
+    @source_folder.push source
     @notifyListeners "sourcelist"
     source
 
@@ -244,11 +274,16 @@ class @Project
       res += s+"\n"
     res
 
-  setFileList:(list,target_list,target_table,get,add,notification)->
+  setFileList:(list,target_list,target_table,get,add,item_id)->
+    notification = item_id+"list"
     li = []
 
     for f in list
       li.push f.file
+
+    folder = @[item_id+"_folder"]
+    folder.removeNoMatch(li)
+    #@[item_id+"_folder"] = new ProjectFolder(null,item_id)
 
     for i in [target_list.length-1..0] by -1
       s = target_list[i]
@@ -260,20 +295,23 @@ class @Project
       if not @[get] s.file.split(".")[0]
         @[add] s
 
+    folder.removeEmptyFolders()
+    folder.sort()
+
     @notifyListeners notification
 
-  setSourceList: (list) => @setFileList list,@source_list,@source_table,"getSource","addSource","sourcelist"
-  setSpriteList: (list) => @setFileList list,@sprite_list,@sprite_table,"getSprite","addSprite","spritelist"
-  setMapList: (list) => @setFileList list,@map_list,@map_table,"getMap","addMap","maplist"
-  setSoundList: (list) => @setFileList list,@sound_list,@sound_table,"getSound","addSound","soundlist"
-  setMusicList: (list) => @setFileList list,@music_list,@music_table,"getMusic","addMusic","musiclist"
-  setMapList: (list) => @setFileList list,@map_list,@map_table,"getMap","addMap","maplist"
-  setAssetList: (list) => @setFileList list,@asset_list,@asset_table,"getAsset","addAsset","assetlist"
+  setSourceList: (list) => @setFileList list,@source_list,@source_table,"getSource","addSource","source"
+  setSpriteList: (list) => @setFileList list,@sprite_list,@sprite_table,"getSprite","addSprite","sprite"
+  setMapList: (list) => @setFileList list,@map_list,@map_table,"getMap","addMap","map"
+  setSoundList: (list) => @setFileList list,@sound_list,@sound_table,"getSound","addSound","sound"
+  setMusicList: (list) => @setFileList list,@music_list,@music_table,"getMusic","addMusic","music"
+  setAssetList: (list) => @setFileList list,@asset_list,@asset_table,"getAsset","addAsset","asset"
 
   addMap:(file)->
     m = new ProjectMap @,file.file,file.size
     @map_table[m.name] = m
     @map_list.push m
+    @map_folder.push m
     m
 
   getMap:(name)->
@@ -283,19 +321,20 @@ class @Project
     m = new ProjectAsset @,file.file,file.size
     @asset_table[m.name] = m
     @asset_list.push m
+    @asset_folder.push m
     m
 
   getAsset:(name)->
     @asset_table[name]
 
-  createMap:()->
-    count = 1
-    loop
-      filename = "map#{count++}"
-      break if not @getMap(filename)?
+  createMap:(basename="map")->
+    name = basename
+    count = 2
+    while @getMap(name)
+      name = "#{basename}#{count++}"
 
     m = @addMap
-          file: filename+".json"
+          file: name+".json"
           size: 0
 
     @notifyListeners "maplist"
@@ -314,6 +353,7 @@ class @Project
     if thumbnail then sound.thumbnail_url = thumbnail
     @sound_table[sound.name] = sound
     @sound_list.push sound
+    @sound_folder.push sound
     @notifyListeners "soundlist"
     sound
 
@@ -321,6 +361,7 @@ class @Project
     m = new ProjectSound @,file.file,file.size
     @sound_table[m.name] = m
     @sound_list.push m
+    @sound_folder.push m
     m
 
   getSound:(name)->
@@ -339,6 +380,7 @@ class @Project
     if thumbnail then music.thumbnail_url = thumbnail
     @music_table[music.name] = music
     @music_list.push music
+    @music_folder.push music
     @notifyListeners "musiclist"
     music
 
@@ -346,10 +388,29 @@ class @Project
     m = new ProjectMusic @,file.file,file.size
     @music_table[m.name] = m
     @music_list.push m
+    @music_folder.push m
     m
 
   getMusic:(name)->
     @music_table[name]
+
+
+  createAsset:(name="asset",thumbnail,size,ext)->
+    if @getAsset(name)
+      count = 2
+      loop
+        filename = "#{name}#{count++}"
+        break if not @getAsset(filename)?
+    else
+      filename = name
+
+    asset = new ProjectAsset @,filename+".#{ext}",size
+    if thumbnail then asset.thumbnail_url = thumbnail
+    @asset_table[asset.name] = asset
+    @asset_list.push asset
+    @asset_folder.push asset
+    @notifyListeners "assetlist"
+    asset
 
   setTitle:(@title)->
     @notifyListeners "title"
@@ -369,6 +430,9 @@ class @Project
     #window.dispatchEvent(new Event('resize'))
 
   setGraphics:(@graphics)->
+    #window.dispatchEvent(new Event('resize'))
+
+  setLanguage:(@language)->
     #window.dispatchEvent(new Event('resize'))
 
   addPendingChange:(item)->
@@ -409,3 +473,147 @@ class @Project
         size += s.size
 
     size
+
+  writeFile:(name,content,options)->
+    name = name.split("/")
+    folder = name[0]
+    for i in [0..name.length-1]
+      name[i] = RegexLib.fixFilename name[i]
+    name = name.slice(1).join("-")
+
+    switch folder
+      when "ms"
+        @writeSourceFile name,content
+
+      when "sprites"
+        @writeSpriteFile name,content,options.frames,options.fps
+
+      when "maps"
+        @writeMapFile name,content
+
+      when "sounds"
+        @writeSoundFile name,content
+
+      when "music"
+        @writeMusicFile name,content
+
+      when "assets"
+        @writeAssetFile name,content,options.ext
+
+  writeSourceFile:(name,content)->
+    @app.client.sendRequest {
+      name: "write_project_file"
+      project: @id
+      file: "ms/#{name}.ms"
+      content: content
+    },(msg)=>
+      @updateSourceList()
+
+  writeSoundFile:(name,content)->
+    base64ToArrayBuffer = (base64)->
+      binary_string = window.atob(base64)
+      len = binary_string.length
+      bytes = new Uint8Array(len)
+      for i in [0..len-1] by 1
+        bytes[i] = binary_string.charCodeAt(i)
+      bytes.buffer
+
+    audioContext = new AudioContext()
+    audioContext.decodeAudioData base64ToArrayBuffer(content),(decoded)=>
+      console.info decoded
+      thumbnailer = new SoundThumbnailer(decoded,96,64)
+
+      @app.client.sendRequest {
+        name: "write_project_file"
+        project: @id
+        file: "sounds/#{name}.wav"
+        properties: {}
+        content: content
+        thumbnail: thumbnailer.canvas.toDataURL().split(",")[1]
+      },(msg)=>
+        console.info msg
+        @updateSoundList()
+
+  writeMusicFile:(name,content)->
+    base64ToArrayBuffer = (base64)->
+      binary_string = window.atob(base64)
+      len = binary_string.length
+      bytes = new Uint8Array(len)
+      for i in [0..len-1] by 1
+        bytes[i] = binary_string.charCodeAt(i)
+      bytes.buffer
+
+    audioContext = new AudioContext()
+    audioContext.decodeAudioData base64ToArrayBuffer(content),(decoded)=>
+      console.info decoded
+      thumbnailer = new SoundThumbnailer(decoded,192,64,"hsl(200,80%,60%)")
+
+      @app.client.sendRequest {
+        name: "write_project_file"
+        project: @id
+        file: "music/#{name}.mp3"
+        properties: {}
+        content: content
+        thumbnail: thumbnailer.canvas.toDataURL().split(",")[1]
+      },(msg)=>
+        console.info msg
+        @updateMusicList()
+
+  writeSpriteFile:(name,content,frames,fps)->
+    @app.client.sendRequest {
+      name: "write_project_file"
+      project: @id
+      file: "sprites/#{name}.png"
+      properties: { frames: frames , fps: fps }
+      content: content
+    },(msg)=>
+      @fileUpdated
+        file: "sprites/#{name}.png"
+        properties:
+          frames: frames
+          fps: fps
+      # @updateSpriteList()
+
+  writeMapFile:(name,content)->
+    @app.client.sendRequest {
+      name: "write_project_file"
+      project: @id
+      file: "maps/#{name}.json"
+      content: content
+    },(msg)=>
+      @fileUpdated
+        file: "maps/#{name}.json"
+
+      @updateMapList()
+
+  writeAssetFile:(name,content,ext)->
+    if ext == "json"
+      content = JSON.stringify content
+
+    thumbnail = undefined
+
+    if ext in ["txt","csv","json","obj"]
+      thumbnail = @app.assets_manager.text_viewer.createThumbnail content,ext
+      thumbnail = thumbnail.toDataURL().split(",")[1]
+
+    if ext == "obj"
+      content = btoa content
+
+    send = ()=>
+      @app.client.sendRequest {
+        name: "write_project_file"
+        project: @id
+        file: "assets/#{name}.#{ext}"
+        content: content
+        thumbnail: thumbnail
+      },(msg)=>
+        @updateAssetList()
+
+    if ext in ["png","jpg"]
+      @app.assets_manager.image_viewer.createThumbnail content,(canvas)=>
+        thumbnail = canvas.toDataURL().split(",")[1]
+        content = content.split(",")[1]
+        send()
+      return
+
+    send()

@@ -13,29 +13,29 @@ div.publish-box#publish-box-online
       | #{translator.get("Make private again")}
     div.publish-text #{translator.get("This project is currently public.")}
 
-  h2 #{translator.get("Make public on microStudio")}
+    br
+    input(type="checkbox" id="publish-listed")
+    label(for="publish-listed") #{translator.get("List my project in the Explore section")}
+    br
+    span.tip #{translator.get("Tick this checkbox if you want your project to show up in the Explore section.")}
+    br
+    div#publish-checklist.tip #{translator.get("Your project will be reviewed before it shows up in the Explore section. Make sure that your project complies with the following:")}
+      ul
+        li #{translator.get("Your project is an original work.")}
+        li #{translator.get("You have created your own nice icon for your project.")}
+        li #{translator.get("You made the assets in your project yourself (sprites, sounds, music), or you made sure that you are allowed to use and publish the assets.")}
+        li #{translator.get("If you are using an asset pack, you made sure to add the required credits and generally comply with the license of the asset pack.")}
+    br
+    h3 #{translator.get("Public link")}
+    a(target="_blank")#publish-public-link
 
-  div#publish-checklist
-    h3 #{translator.get("Checklist before publishing")}
-    p #{translator.get("Before making your project public, please make sure to understand and comply with the following. Tick the boxes when you comply, then press the publication button again")}
-    input(type="checkbox" id="publish-check-original")
-    label(for="publish-check-original") #{translator.get("My project is an original work, not a barely modified clone of an existing project.")}
-    br
-    input(type="checkbox" id="publish-check-useful")
-    label(for="publish-check-useful") #{translator.get("My project brings something interesting or fun to others, it's not just a test.")}
-    br
-    input(type="checkbox" id="publish-check-icon")
-    label(for="publish-check-icon") #{translator.get("I have created a nice icon for it (the default project icon is not accepted, please create yours!).")}
-    br
-    input(type="checkbox" id="publish-check-copyright")
-    label(for="publish-check-copyright") #{translator.get("I made the assets in my project myself (sprites, sounds, music), or I made sure that I am allowed to use and publish the assets I imported into it.")}
-    br
-    input(type="checkbox" id="publish-check-license")
-    label(for="publish-check-license") #{translator.get("If I am using an asset pack, I made sure to add the required credits and generally comply with the license of the asset packs.")}
+
+  h2 #{translator.get("Make public on microStudio")}
 
   p #{translator.get("Making your project public will allow it to be listed in the Explore section of the site. Public projects can be run and used by anyone. Making a project public allows anyone to view and possibly reuse the source code.")}
 
   h3 #{translator.get("Description")}
+  div.tip #{translator.get("You can use markdown in your description")}
   textarea#publish-box-textarea(rows=5 cols=60)
 
   h3 #{translator.get("Tags")}
@@ -44,7 +44,8 @@ div.publish-box#publish-box-online
     div.validate-button <i class="fa fa-plus"></i> #{translator.get("Add")}
 
   div#publish-tag-list
-    
+  div(style="clear: both") &nbsp;
+
 div.publish-box
   div.action-box#html-export
     div.publish-button
@@ -56,19 +57,12 @@ div.publish-box
   p #{translator.get("You can also easily publish your HTML5 game on a number of platforms supporting HTML5 games. We have listed a few popular ones below, which you can check out:")}
 
   div.logos
-    a(href="https://itch.io" target="_blank")
-      img.logo(src="/img/itchio.svg" alt="itch.io" title="itch.io")
-    a(href="https://gamejolt.com" target="_blank")
-      img.logo(src="/img/gamejolt.png" alt="Gamejolt" title="Gamejolt")
-    a(href="https://gamedistribution.com" target="_blank")
-      img.logo(src="/img/gamedistribution.svg" alt="Game Distribution" title="Game Distribution")
-    a(href="https://kongregate.com" target="_blank")
-      img.logo(src="/img/kongregate.svg" alt="Kongregate" title="Kongregate")
-    a(href="https://gamepix.com" target="_blank")
-      img.logo(src="/img/gamepix.png" alt="Gamepix" title="Gamepix")
-    a(href="https://crazygames.com" target="_blank")
-      img.logo(src="/img/crazygames.svg" alt="CrazyGames" title="CrazyGames")
-
+    a(href="https://itch.io" target="_blank" style="background-image:url(/img/itchio.svg);" title="itch.io")
+    a(href="https://gamejolt.com" target="_blank" style="background-image:url(/img/gamejolt.png);" title="Gamejolt")
+    a(href="https://gamedistribution.com" target="_blank" style="background-image:url(/img/gamedistribution.svg);" title="Game Distribution")
+    a(href="https://kongregate.com" target="_blank" style="background-image:url(/img/kongregate.svg);" title="Kongregate")
+    a(href="https://gamepix.com" target="_blank" style="background-image:url(/img/gamepix.png);" title="Gamepix")
+    a(href="https://crazygames.com" target="_blank" style="background-image:url(/img/crazygames.svg);" title="CrazyGames")
 
 div.publish-box#publish-box-android
   img.title(src="/img/android_robot.svg")
@@ -114,7 +108,7 @@ div.publish-box#publish-box-linux
   h2 #{translator.get("Build for Linux")} <span class="beta">beta</span>
   p #{translator.get("This will build your game as an executable for Linux (Ubuntu, x86).")}
   div.clear
-    
+
 div.publish-box#publish-box-raspbian
   img.title(src="/img/raspberry.svg")
   div.action-box#raspbian-export

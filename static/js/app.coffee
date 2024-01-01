@@ -5,6 +5,13 @@ window.addEventListener "load",()->
 
 class App
   constructor:()->
+    @languages =
+      microscript2: LANGUAGE_MICROSCRIPT2
+      microscript: LANGUAGE_MICROSCRIPT
+      python: LANGUAGE_PYTHON
+      javascript: LANGUAGE_JAVASCRIPT
+      lua: LANGUAGE_LUA
+
     @translator = new Translator @
     @app_state = new AppState @
 
@@ -26,7 +33,11 @@ class App
     @sound_editor = new SoundEditor @
     @music_editor = new MusicEditor @
     @runwindow = new RunWindow @
+    @debug = new Debug @
     @options = new Options @
+    @tab_manager = new TabManager @
+    @lib_manager = new LibManager @
+    @sync = new Sync @
     @publish = new Publish @
     @user_settings = new UserSettings @
     @connected = false
@@ -123,11 +134,20 @@ class App
         document.getElementById("forgot-password-panel").innerHTML = @translator.get("Thank you. Please check your mail.")
         setTimeout (()=>@appui.hide "login-overlay"),5000
 
-  createProject:(title,slug,callback)->
+  createProject:(title,slug,options,callback)->
+    if options? and typeof options == "function" and not callback?
+      callback = options
+      options =
+        language: "microscript_v2"
+
     @client.sendRequest {
       name: "create_project"
       title: title
       slug: slug
+      type: options.type
+      graphics: options.graphics
+      language: options.language
+      libs: options.libs
     },(msg)=>
       switch msg.name
         when "error"
@@ -170,6 +190,9 @@ class App
             @appui.showNotification @translator.get "Project imported successfully"
             @appui.resetImportButton()
             @importing = false
+            @tab_manager.resetPlugins()
+            @lib_manager.resetLibs()
+
       ),(progress)=>
         @appui.setImportProgress(progress)
 
@@ -200,10 +223,13 @@ class App
     @map_editor.projectOpened()
     @sound_editor.projectOpened()
     @music_editor.projectOpened()
-    if project.graphics == "M3D"
-      @assets_manager.projectOpened()
+    @assets_manager.projectOpened()
     @runwindow.projectOpened()
+    @debug.projectOpened()
     @options.projectOpened()
+    @tab_manager.projectOpened()
+    @lib_manager.projectOpened()
+    @sync.projectOpened()
     @publish.loadProject(@project)
     @project.load()
     if not @tutorial.shown
@@ -317,6 +343,8 @@ class App
         if @project? and msg.project == @project.id
           @project.optionsUpdated(msg)
           @options.projectOpened()
+          @tab_manager.projectOpened()
+          @lib_manager.projectOpened()
       when "user_stats"
         if @user?
           @user.info.stats = msg.stats
@@ -413,3 +441,10 @@ class App
     @appui.setMainSection("usersettings")
     @user_settings.setSection("progress")
     @app_state.pushState "user.progress","/user/progress/"
+
+
+if navigator.serviceWorker?
+  navigator.serviceWorker.register("/app_sw.js", { scope: location.pathname }).then((reg)->
+    console.log('Registration succeeded. Scope is' + reg.scope)
+  ).catch (error)->
+    console.log('Registration failed with' + error)

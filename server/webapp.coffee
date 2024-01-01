@@ -7,6 +7,7 @@ Concatenator = require __dirname+"/concatenator.js"
 Fonts = require __dirname+"/fonts.js"
 ExportFeatures = require __dirname+"/app/exportfeatures.js"
 ForumApp = require __dirname+"/forum/forumapp.js"
+API = require __dirname+"/api.js"
 
 marked = require "marked"
 sanitizeHTML = require "sanitize-html"
@@ -25,6 +26,7 @@ class @WebApp
     #  redir = res.redirect(redir)
 
     @forum_app = new ForumApp @server,@
+    @api = new API @server,@
 
     @concatenator = new Concatenator @
     @fonts = new Fonts
@@ -34,7 +36,7 @@ class @WebApp
 
     @home_page = {}
 
-    @languages = ["en","fr","pl","de","it", "pt"]
+    @languages = ["en","fr","pl","de","it","pt","ru"]
     home_exp = "^(\\/"
     for i in [1..@languages.length-1] by 1
       home_exp += "|\\/#{@languages[i]}\\/?"
@@ -74,18 +76,56 @@ class @WebApp
         @server.content.translator.languages[lang].updated = false
         delete @home_page[lang]
 
-      if not @home_page[lang]? or not @server.use_cache
-        #console.info "generating home page #{lang}"
-        @home_page[lang] = @home_funk
-          name: "microStudio"
+      s = req.path.split("/")
+      if s[1] == "i"
+        user = s[2]
+        project = s[3]
+        user = @server.content.findUserByNick(user)
+        if not user?
+          @return404(req,res)
+          return null
+
+        project = user.findProjectBySlug project
+        if not project? or not project.public
+          @return404(req,res)
+          return null
+
+        translator = @server.content.translator.getTranslator(lang)
+        page = @home_funk
+          name: project.title
           javascript_files: @concatenator.getHomeJSFiles()
           css_files: @concatenator.getHomeCSSFiles()
-          translator: @server.content.translator.getTranslator(lang)
+          translator: translator
           language: lang
           standalone: @server.config.standalone == true
           languages: @languages
           optional_libs: @concatenator.optional_libs
+          language_engines: @concatenator.language_engines
           translation: if @server.content.translator.languages[lang]? then @server.content.translator.languages[lang].export() else "{}"
+          title: translator.get("%PROJECT% - by %USER%").replace("%PROJECT%",project.title).replace("%USER%",user.nick)
+          description: project.description
+          long_description: project.description
+          poster: if project.files? and project.files["sprites/poster.png"]? then "https://microstudio.io/#{user.nick}/#{project.slug}/sprites/poster.png" else "https://microstudio.io/#{user.nick}/#{project.slug}/sprites/icon.png"
+
+        return res.send page
+      else if not @home_page[lang]? or not @server.use_cache
+        #console.info "generating home page #{lang}"
+        translator = @server.content.translator.getTranslator(lang)
+        @home_page[lang] = @home_funk
+          name: "microStudio"
+          javascript_files: @concatenator.getHomeJSFiles()
+          css_files: @concatenator.getHomeCSSFiles()
+          translator: translator
+          language: lang
+          standalone: @server.config.standalone == true
+          languages: @languages
+          optional_libs: @concatenator.optional_libs
+          language_engines: @concatenator.language_engines
+          translation: if @server.content.translator.languages[lang]? then @server.content.translator.languages[lang].export() else "{}"
+          title: "microStudio - "+translator.get("Learn programming, create games")
+          description: translator.get("Learn programming, create video games - microStudio is a free game engine online.")
+          long_description: translator.get("microStudio is a free game engine online. Learn, create and share with the community. Use the built-in sprite editor, map editor and code editor to create anything.")
+          poster: "https://microstudio.dev/img/microstudio.jpg"
 
       res.send @home_page[lang]
 
@@ -206,37 +246,54 @@ class @WebApp
         if @concatenator.optional_libs[lib]?
           jsfiles.push @concatenator.optional_libs[lib].lib
 
+      prog_lang = project.language
+      if @concatenator.language_engines[prog_lang]?
+        jsfiles = jsfiles.concat @concatenator.language_engines[prog_lang].scripts
+        jsfiles = jsfiles.concat @concatenator.language_engines[prog_lang].lib
+
+      pathcode = if project.public then project.slug else "#{project.slug}/#{project.code}"
+      poster = if project.files? and project.files["sprites/poster.png"]?
+        "https://microstudio.io/#{user.nick}/#{pathcode}/sprites/poster.png"
+      else
+        "https://microstudio.io/#{user.nick}/#{pathcode}/icon512.png"
+
       manager.listFiles "ms",(sources)=>
         manager.listFiles "sprites",(sprites)=>
           manager.listFiles "maps",(maps)=>
             manager.listFiles "sounds",(sounds)=>
               manager.listFiles "music",(music)=>
-                resources = JSON.stringify
-                  sources: sources
-                  images: sprites
-                  maps: maps
-                  sounds: sounds
-                  music: music
+                manager.listFiles "assets",(assets)=>
+                  resources = JSON.stringify
+                    sources: sources
+                    images: sprites
+                    maps: maps
+                    sounds: sounds
+                    music: music
+                    assets: assets
 
-                resources = "var resources = #{resources};\n"
-                if not @play_funk? or not @server.use_cache
-                  @play_funk = pug.compileFile "../templates/play/play.pug"
+                  resources = "var resources = #{resources};\n"
+                  if not @play_funk? or not @server.use_cache
+                    @play_funk = pug.compileFile "../templates/play/play.pug"
 
-                res.send @play_funk
-                  user: user
-                  javascript_files: jsfiles
-                  fonts: @fonts.fonts
-                  game:
-                    name: project.slug
-                    title: project.title
-                    author: user.nick
-                    resources: resources
-                    orientation: project.orientation
-                    aspect: project.aspect
-                    graphics: project.graphics
-                    libs: JSON.stringify(project.libs)
+                  res.send @play_funk
+                    user: user
+                    javascript_files: jsfiles
+                    fonts: @fonts.fonts
+                    debug: req.query? and req.query.debug?
+                    language: project.language
+                    game:
+                      name: project.slug
+                      title: project.title
+                      author: user.nick
+                      resources: resources
+                      orientation: project.orientation
+                      aspect: project.aspect
+                      graphics: project.graphics
+                      libs: JSON.stringify(project.libs)
+                      description: project.description
+                      poster: poster
 
-    @app.get /^\/[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*\/?$/,(req,res)=>
+    @app.get /^\/[A-Za-z0-9_]+\/?$/,(req,res)=>
       return if @ensureIOArea(req,res)
       @getUserPublicPage(req,res)
 
@@ -325,7 +382,7 @@ class @WebApp
           res.send buffer
 
     # source files for player
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/ms\/[A-Za-z0-9_]+.ms$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/ms\/[A-Za-z0-9_-]+.ms$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -343,7 +400,7 @@ class @WebApp
           res.status(404).send("Error 404")
 
     # asset thumbnail
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(assets_th|sounds_th|music_th)\/[A-Za-z0-9_]+.png$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(assets_th|sounds_th|music_th)\/[A-Za-z0-9_-]+.png$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -382,7 +439,7 @@ class @WebApp
           res.status(404).send("Error 404")
 
     # image files for player and all
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sprites\/[A-Za-z0-9_]+.png$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sprites\/[A-Za-z0-9_-]+.png$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -400,7 +457,7 @@ class @WebApp
           res.status(404).send("Error 404")
 
     # map files for player
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/maps\/[A-Za-z0-9_]+.json$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/maps\/[A-Za-z0-9_-]+.json$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -418,7 +475,7 @@ class @WebApp
           res.status(404).send("Error 404")
 
     # sound files for player and all
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sounds\/[A-Za-z0-9_]+.wav$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sounds\/[A-Za-z0-9_-]+.wav$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -437,7 +494,7 @@ class @WebApp
 
 
     # music files for player and all
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/music\/[A-Za-z0-9_]+.mp3$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/music\/[A-Za-z0-9_-]+.mp3$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -456,7 +513,7 @@ class @WebApp
 
 
     # asset files
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/assets\/[A-Za-z0-9_]+.(glb|jpg|png)$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/assets\/[A-Za-z0-9_-]+.(glb|obj|jpg|png|ttf|txt|csv|json)$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
@@ -468,9 +525,14 @@ class @WebApp
       @server.content.files.read "#{user.id}/#{project.id}/assets/#{asset}","binary",(content)=>
         if content?
           switch asset.split(".")[1]
-            when "png" then res.setHeader("Content-Type", "image/png")
-            when "jpg" then res.setHeader("Content-Type", "image/jpg")
             when "glb" then res.setHeader("Content-Type", "model/gltf-binary")
+            when "obj" then res.setHeader("Content-Type", "model/gltf-binary")
+            when "jpg" then res.setHeader("Content-Type", "image/jpg")
+            when "png" then res.setHeader("Content-Type", "image/png")
+            when "ttf" then res.setHeader("Content-Type", "application/font-sfnt")
+            when "txt" then res.setHeader("Content-Type", "text/plain")
+            when "csv" then res.setHeader("Content-Type", "text/csv")
+            when "json" then res.setHeader("Content-Type", "application/json")
 
           res.send content
         else

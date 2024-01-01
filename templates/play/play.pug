@@ -7,16 +7,23 @@ html
     meta(charset='UTF-8')
     meta(name='mobile-web-app-capable', content='yes')
     meta(name='apple-mobile-web-app-capable', content='yes')
-    meta(name='description', content='')
+    meta(name='description', content=game.description)
 
     meta(property="og:title" content=game.title)
     meta(property="og:site_name" content="microStudio")
     meta(property="og:url" content="https://microstudio.io/"+game.author+"/"+game.name+"/")
-    meta(property="og:image" content="https://microstudio.io/"+game.author+"/"+game.name+"/icon512.png")
+    meta(property="og:image" content=game.poster)
     meta(property="og:image:type" content="image/png")
-    meta(property="og:description" content=game.title+" by "+game.author)
+    meta(property="og:description" content=game.description)
 
-    link(rel="manifest" href="manifest.json")
+    meta(name="twitter:card" content="summary_large_image")
+    meta(name="twitter:site" content="@microStudio")
+    meta(name="twitter:title" content=game.title)
+    meta(name="twitter:description" content=game.description)
+    meta(name="twitter:image" content=game.poster)
+
+    if !debug
+      link(rel="manifest" href="manifest.json")
     link(rel='icon', type='image/png', href="/"+game.author+"/"+game.name+"/icon64.png")
     link(rel="apple-touch-icon" sizes="180x180" href="/"+game.author+"/"+game.name+"/icon180.png")
     link(rel="icon" type="image/png" sizes="32x32" href="/"+game.author+"/"+game.name+"/icon32.png")
@@ -55,6 +62,13 @@ html
   body.noselect.custom-cursor(oncontextmenu='return false;')
     #canvaswrapper
 
+    if debug
+      script(type="text/javascript").
+        window.skip_service_worker = true ;
+        if (navigator.serviceWorker != null) {
+          navigator.serviceWorker.getRegistrations().then( function(registrations) { for(let registration of registrations) { registration.unregister(); } });
+        }
+
     script(type="text/javascript").
       !{game.resources}
 
@@ -63,9 +77,39 @@ html
       var aspect = '!{game.aspect}' ;
       var graphics = '!{game.graphics}' ;
       var ms_libs = !{game.libs} ;
+      window.ms_in_editor = !{debug} ;
 
     each file in javascript_files
       script(src=file)
 
   script(id="code" type="text/x-project-code").
     !{game.code}
+
+
+  script(type="text/javascript").
+    window.addEventListener("load",function() {
+      window.player = new Player() ;
+      document.body.focus() ;
+    }) ;
+
+  if language == "python"
+    script(type="text/python").
+      from browser import window
+      import traceback
+      import sys
+
+      def execute(str):
+        try:
+          return exec(str,globals())
+        except BaseException as err:
+          exp = traceback.format_exception(err)
+          sys.stderr.write(exp)
+        except Error as err:
+          exp = traceback.format_exception(err)
+          sys.stderr.write(exp)
+
+      window.python = execute
+      window.glob = globals()
+
+    script.
+      brython()

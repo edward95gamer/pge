@@ -1,4 +1,4 @@
-var Concatenator, ExportFeatures, Fonts, ForumApp, Jimp, ProjectManager, SHA256, allowedTags, fs, marked, pug, sanitizeHTML,
+var API, Concatenator, ExportFeatures, Fonts, ForumApp, Jimp, ProjectManager, SHA256, allowedTags, fs, marked, pug, sanitizeHTML,
   indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 SHA256 = require("crypto-js/sha256");
@@ -19,6 +19,8 @@ ExportFeatures = require(__dirname + "/app/exportfeatures.js");
 
 ForumApp = require(__dirname + "/forum/forumapp.js");
 
+API = require(__dirname + "/api.js");
+
 marked = require("marked");
 
 sanitizeHTML = require("sanitize-html");
@@ -37,12 +39,13 @@ this.WebApp = (function() {
       };
     })(this));
     this.forum_app = new ForumApp(this.server, this);
+    this.api = new API(this.server, this);
     this.concatenator = new Concatenator(this);
     this.fonts = new Fonts;
     this.export_features = new ExportFeatures(this);
     this.server.build_manager.createLinks(this.app);
     this.home_page = {};
-    this.languages = ["en", "fr", "pl", "de", "it", "pt"];
+    this.languages = ["en", "fr", "pl", "de", "it", "pt", "ru"];
     home_exp = "^(\\/";
     for (i = j = 1, ref = this.languages.length - 1; j <= ref; i = j += 1) {
       home_exp += "|\\/" + this.languages[i] + "\\/?";
@@ -67,7 +70,7 @@ this.WebApp = (function() {
     console.info("home_exp = " + home_exp);
     this.app.get(new RegExp(home_exp), (function(_this) {
       return function(req, res) {
-        var l, lang, len2, n, ref3;
+        var l, lang, len2, n, page, project, ref3, s, translator, user;
         if (_this.ensureDevArea(req, res)) {
           return;
         }
@@ -86,17 +89,55 @@ this.WebApp = (function() {
           _this.server.content.translator.languages[lang].updated = false;
           delete _this.home_page[lang];
         }
-        if ((_this.home_page[lang] == null) || !_this.server.use_cache) {
-          _this.home_page[lang] = _this.home_funk({
-            name: "microStudio",
+        s = req.path.split("/");
+        if (s[1] === "i") {
+          user = s[2];
+          project = s[3];
+          user = _this.server.content.findUserByNick(user);
+          if (user == null) {
+            _this.return404(req, res);
+            return null;
+          }
+          project = user.findProjectBySlug(project);
+          if ((project == null) || !project["public"]) {
+            _this.return404(req, res);
+            return null;
+          }
+          translator = _this.server.content.translator.getTranslator(lang);
+          page = _this.home_funk({
+            name: project.title,
             javascript_files: _this.concatenator.getHomeJSFiles(),
             css_files: _this.concatenator.getHomeCSSFiles(),
-            translator: _this.server.content.translator.getTranslator(lang),
+            translator: translator,
             language: lang,
             standalone: _this.server.config.standalone === true,
             languages: _this.languages,
             optional_libs: _this.concatenator.optional_libs,
-            translation: _this.server.content.translator.languages[lang] != null ? _this.server.content.translator.languages[lang]["export"]() : "{}"
+            language_engines: _this.concatenator.language_engines,
+            translation: _this.server.content.translator.languages[lang] != null ? _this.server.content.translator.languages[lang]["export"]() : "{}",
+            title: translator.get("%PROJECT% - by %USER%").replace("%PROJECT%", project.title).replace("%USER%", user.nick),
+            description: project.description,
+            long_description: project.description,
+            poster: (project.files != null) && (project.files["sprites/poster.png"] != null) ? "https://microstudio.io/" + user.nick + "/" + project.slug + "/sprites/poster.png" : "https://microstudio.io/" + user.nick + "/" + project.slug + "/sprites/icon.png"
+          });
+          return res.send(page);
+        } else if ((_this.home_page[lang] == null) || !_this.server.use_cache) {
+          translator = _this.server.content.translator.getTranslator(lang);
+          _this.home_page[lang] = _this.home_funk({
+            name: "microStudio",
+            javascript_files: _this.concatenator.getHomeJSFiles(),
+            css_files: _this.concatenator.getHomeCSSFiles(),
+            translator: translator,
+            language: lang,
+            standalone: _this.server.config.standalone === true,
+            languages: _this.languages,
+            optional_libs: _this.concatenator.optional_libs,
+            language_engines: _this.concatenator.language_engines,
+            translation: _this.server.content.translator.languages[lang] != null ? _this.server.content.translator.languages[lang]["export"]() : "{}",
+            title: "microStudio - " + translator.get("Learn programming, create games"),
+            description: translator.get("Learn programming, create video games - microStudio is a free game engine online."),
+            long_description: translator.get("microStudio is a free game engine online. Learn, create and share with the community. Use the built-in sprite editor, map editor and code editor to create anything."),
+            poster: "https://microstudio.dev/img/microstudio.jpg"
           });
         }
         return res.send(_this.home_page[lang]);
@@ -222,7 +263,7 @@ this.WebApp = (function() {
     })(this));
     this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+\/?)?)?$/, (function(_this) {
       return function(req, res) {
-        var access, encoding, file, jsfiles, len3, lib, manager, o, project, redir, ref4, user;
+        var access, encoding, file, jsfiles, len3, lib, manager, o, pathcode, poster, prog_lang, project, redir, ref4, user;
         if (_this.ensureIOArea(req, res)) {
           return;
         }
@@ -248,38 +289,52 @@ this.WebApp = (function() {
             jsfiles.push(_this.concatenator.optional_libs[lib].lib);
           }
         }
+        prog_lang = project.language;
+        if (_this.concatenator.language_engines[prog_lang] != null) {
+          jsfiles = jsfiles.concat(_this.concatenator.language_engines[prog_lang].scripts);
+          jsfiles = jsfiles.concat(_this.concatenator.language_engines[prog_lang].lib);
+        }
+        pathcode = project["public"] ? project.slug : project.slug + "/" + project.code;
+        poster = (project.files != null) && (project.files["sprites/poster.png"] != null) ? "https://microstudio.io/" + user.nick + "/" + pathcode + "/sprites/poster.png" : "https://microstudio.io/" + user.nick + "/" + pathcode + "/icon512.png";
         return manager.listFiles("ms", function(sources) {
           return manager.listFiles("sprites", function(sprites) {
             return manager.listFiles("maps", function(maps) {
               return manager.listFiles("sounds", function(sounds) {
                 return manager.listFiles("music", function(music) {
-                  var resources;
-                  resources = JSON.stringify({
-                    sources: sources,
-                    images: sprites,
-                    maps: maps,
-                    sounds: sounds,
-                    music: music
-                  });
-                  resources = "var resources = " + resources + ";\n";
-                  if ((_this.play_funk == null) || !_this.server.use_cache) {
-                    _this.play_funk = pug.compileFile("../templates/play/play.pug");
-                  }
-                  return res.send(_this.play_funk({
-                    user: user,
-                    javascript_files: jsfiles,
-                    fonts: _this.fonts.fonts,
-                    game: {
-                      name: project.slug,
-                      title: project.title,
-                      author: user.nick,
-                      resources: resources,
-                      orientation: project.orientation,
-                      aspect: project.aspect,
-                      graphics: project.graphics,
-                      libs: JSON.stringify(project.libs)
+                  return manager.listFiles("assets", function(assets) {
+                    var resources;
+                    resources = JSON.stringify({
+                      sources: sources,
+                      images: sprites,
+                      maps: maps,
+                      sounds: sounds,
+                      music: music,
+                      assets: assets
+                    });
+                    resources = "var resources = " + resources + ";\n";
+                    if ((_this.play_funk == null) || !_this.server.use_cache) {
+                      _this.play_funk = pug.compileFile("../templates/play/play.pug");
                     }
-                  }));
+                    return res.send(_this.play_funk({
+                      user: user,
+                      javascript_files: jsfiles,
+                      fonts: _this.fonts.fonts,
+                      debug: (req.query != null) && (req.query.debug != null),
+                      language: project.language,
+                      game: {
+                        name: project.slug,
+                        title: project.title,
+                        author: user.nick,
+                        resources: resources,
+                        orientation: project.orientation,
+                        aspect: project.aspect,
+                        graphics: project.graphics,
+                        libs: JSON.stringify(project.libs),
+                        description: project.description,
+                        poster: poster
+                      }
+                    }));
+                  });
                 });
               });
             });
@@ -287,7 +342,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*\/?$/, (function(_this) {
+    this.app.get(/^\/[A-Za-z0-9_]+\/?$/, (function(_this) {
       return function(req, res) {
         if (_this.ensureIOArea(req, res)) {
           return;
@@ -393,7 +448,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/ms\/[A-Za-z0-9_]+.ms$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/ms\/[A-Za-z0-9_-]+.ms$/, (function(_this) {
       return function(req, res) {
         var access, ms, project, s, user;
         s = req.path.split("/");
@@ -415,7 +470,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(assets_th|sounds_th|music_th)\/[A-Za-z0-9_]+.png$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(assets_th|sounds_th|music_th)\/[A-Za-z0-9_-]+.png$/, (function(_this) {
       return function(req, res) {
         var access, asset, folder, project, s, user;
         s = req.path.split("/");
@@ -460,7 +515,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sprites\/[A-Za-z0-9_]+.png$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sprites\/[A-Za-z0-9_-]+.png$/, (function(_this) {
       return function(req, res) {
         var access, image, project, s, user;
         s = req.path.split("/");
@@ -482,7 +537,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/maps\/[A-Za-z0-9_]+.json$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/maps\/[A-Za-z0-9_-]+.json$/, (function(_this) {
       return function(req, res) {
         var access, map, project, s, user;
         s = req.path.split("/");
@@ -504,7 +559,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sounds\/[A-Za-z0-9_]+.wav$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/sounds\/[A-Za-z0-9_-]+.wav$/, (function(_this) {
       return function(req, res) {
         var access, project, s, sound, user;
         s = req.path.split("/");
@@ -526,7 +581,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/music\/[A-Za-z0-9_]+.mp3$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/music\/[A-Za-z0-9_-]+.mp3$/, (function(_this) {
       return function(req, res) {
         var access, music, project, s, user;
         s = req.path.split("/");
@@ -548,7 +603,7 @@ this.WebApp = (function() {
         });
       };
     })(this));
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/assets\/[A-Za-z0-9_]+.(glb|jpg|png)$/, (function(_this) {
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/assets\/[A-Za-z0-9_-]+.(glb|obj|jpg|png|ttf|txt|csv|json)$/, (function(_this) {
       return function(req, res) {
         var access, asset, project, s, user;
         s = req.path.split("/");
@@ -562,14 +617,29 @@ this.WebApp = (function() {
         return _this.server.content.files.read(user.id + "/" + project.id + "/assets/" + asset, "binary", function(content) {
           if (content != null) {
             switch (asset.split(".")[1]) {
-              case "png":
-                res.setHeader("Content-Type", "image/png");
+              case "glb":
+                res.setHeader("Content-Type", "model/gltf-binary");
+                break;
+              case "obj":
+                res.setHeader("Content-Type", "model/gltf-binary");
                 break;
               case "jpg":
                 res.setHeader("Content-Type", "image/jpg");
                 break;
-              case "glb":
-                res.setHeader("Content-Type", "model/gltf-binary");
+              case "png":
+                res.setHeader("Content-Type", "image/png");
+                break;
+              case "ttf":
+                res.setHeader("Content-Type", "application/font-sfnt");
+                break;
+              case "txt":
+                res.setHeader("Content-Type", "text/plain");
+                break;
+              case "csv":
+                res.setHeader("Content-Type", "text/csv");
+                break;
+              case "json":
+                res.setHeader("Content-Type", "application/json");
             }
             return res.send(content);
           } else {

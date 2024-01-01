@@ -36,7 +36,9 @@ this.Keyboard = (function() {
 
   Keyboard.prototype.keydown = function(event) {
     var code, key;
-    event.preventDefault();
+    if (!event.altKey && !event.ctrlKey && !event.metaKey && !/Escape|(F\d+)/.test(event.key)) {
+      event.preventDefault();
+    }
     code = event.code;
     key = event.key;
     this.keyboard[this.convertCode(code)] = 1;
@@ -89,6 +91,16 @@ this.Keyboard = (function() {
         continue;
       }
       this.previous[key] = this.keyboard[key];
+    }
+  };
+
+  Keyboard.prototype.reset = function() {
+    var key;
+    for (key in this.keyboard) {
+      if (key === "press" || key === "release") {
+        continue;
+      }
+      this.keyboard[key] = 0;
     }
   };
 

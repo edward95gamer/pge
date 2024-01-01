@@ -59,6 +59,7 @@ class @Session
     @register "create_project",(msg)=>@createProject(msg)
     @register "import_project",(msg)=>@importProject(msg)
     @register "set_project_option",(msg)=>@setProjectOption(msg)
+    @register "set_project_property",(msg)=>@setProjectProperty(msg)
     @register "set_project_public",(msg)=>@setProjectPublic(msg)
     @register "set_project_tags",(msg)=>@setProjectTags(msg)
     @register "delete_project",(msg)=>@deleteProject(msg)
@@ -74,12 +75,15 @@ class @Session
     @register "read_public_project_file",(msg)=>@readPublicProjectFile(msg)
     @register "listen_to_project",(msg)=>@listenToProject(msg)
     @register "get_file_versions",(msg)=>@getFileVersions(msg)
+    @register "sync_project_files",(msg)=>@syncProjectFiles(msg)
 
     @register "invite_to_project",(msg)=>@inviteToProject(msg)
     @register "accept_invite",(msg)=>@acceptInvite(msg)
     @register "remove_project_user",(msg)=>@removeProjectUser(msg)
 
     @register "get_public_projects",(msg)=>@getPublicProjects(msg)
+    @register "get_public_plugins",(msg)=>@getPublicPlugins(msg)
+    @register "get_public_libraries",(msg)=>@getPublicLibraries(msg)
     @register "get_public_project",(msg)=>@getPublicProject(msg)
     @register "clone_project",(msg)=>@cloneProject(msg)
     @register "clone_public_project",(msg)=>@clonePublicProject(msg)
@@ -104,6 +108,10 @@ class @Session
     @register "upload_request",(msg)=>@uploadRequest(msg)
 
     @register "tutorial_completed",(msg)=>@tutorialCompleted(msg)
+
+    # moderation
+    @register "set_project_approved",(msg)=>@setProjectApproved msg
+    @register "set_user_approved",(msg)=>@setUserApproved msg
 
     for plugin in @server.plugins
       if plugin.registerSessionMessages?
@@ -158,16 +166,19 @@ class @Session
     @commands[name] = callback
 
   disconnected:()->
-    if @project? and @project.manager?
-      @project.manager.removeUser @
-      @project.manager.removeListener @
-    if @user?
-      @user.removeListener @
+    try
+      if @project? and @project.manager?
+        @project.manager.removeSession @
+        @project.manager.removeListener @
+      if @user?
+        @user.removeListener @
+    catch err
+      console.error err
 
   setCurrentProject:(project)->
     if project != @project or not @project.manager?
       if @project? and @project.manager?
-        @project.manager.removeUser @
+        @project.manager.removeSession @
       @project = project
       if not @project.manager?
         new ProjectManager @project
@@ -279,6 +290,7 @@ class @Session
       @user.setFlag("newsletter",data.newsletter)
       @user.set("hash",hash)
       @user.resetValidationToken()
+      @user.updateTier()
     else
       @user = @content.createUser
         nick: data.nick
@@ -379,7 +391,7 @@ class @Session
       @logActiveUser()
 
     token = @content.findToken data.token
-    if token?
+    if token? and token.user? and not token.user.flags.deleted
       @user = token.user
       @user.addListener @
       @send
@@ -405,6 +417,23 @@ class @Session
       name: "error"
       error: error
       request_id: request_id
+
+  syncProjectFiles:(data)->
+    return @sendError("Bad request") if not data.request_id?
+    return @sendError("not connected",data.request_id) if not @user?
+    return @sendError("bad request",data.request_id) if not data.source?
+    return @sendError("bad request",data.request_id) if not data.dest?
+    return @sendError("bad request",data.request_id) if not data.ops?
+
+    dest = @content.projects[data.dest]
+    if dest?
+      @setCurrentProject dest
+      source = @content.projects[data.source]
+      if source?
+        if not dest.manager.canReadProject @user,source
+          return @sendError("access denied",data.request_id)
+
+        dest.manager.syncFiles @,data,source
 
   importProject:(data)->
     return @sendError("Bad request") if not data.request_id?
@@ -474,12 +503,16 @@ class @Session
         clone.setType project.type
         clone.setOrientation project.orientation
         clone.setAspect project.aspect
+        clone.set "language",project.language
         clone.setGraphics project.graphics
         clone.set "libs",project.libs
+        clone.set "tabs",project.tabs
+        clone.set "plugins",project.plugins
+        clone.set "libraries",project.libraries
         clone.set "files",JSON.parse JSON.stringify project.files
         man = @getProjectManager(project)
 
-        folders = ["ms","sprites","maps","sounds","sounds_th","music","music_th","doc"]
+        folders = ["ms","sprites","maps","sounds","sounds_th","music","music_th","assets","assets_th","doc"]
         files = []
         funk = ()=>
           if folders.length>0
@@ -522,12 +555,16 @@ class @Session
           clone.setType project.type
           clone.setOrientation project.orientation
           clone.setAspect project.aspect
+          clone.set "language",project.language
           clone.setGraphics project.graphics
           clone.set "libs",project.libs
+          clone.set "tabs",project.tabs
+          clone.set "plugins",project.plugins
+          clone.set "libraries",project.libraries
           clone.set "files",JSON.parse JSON.stringify project.files
           man = @getProjectManager(project)
 
-          folders = ["ms","sprites","maps","sounds","sounds_th","music","music_th","doc"]
+          folders = ["ms","sprites","maps","sounds","sounds_th","music","music_th","assets","assets_th","doc"]
           files = []
           funk = ()=>
             if folders.length>0
@@ -579,6 +616,34 @@ class @Session
           name:"set_project_public"
           id: project.id
           public: project.public
+          request_id: data.request_id
+
+  setProjectApproved:(data)->
+    return if not @user?
+    return if not data.project?
+
+    if @user.flags.admin or @user.flags.moderator
+      project = @content.projects[data.project]
+      if project?
+        project.setFlag "approved",data.approved
+        @send
+          name:"set_project_approved"
+          id: project.id
+          approved: data.approved
+          request_id: data.request_id
+
+  setUserApproved:(data)->
+    return if not @user?
+    return if not data.user?
+
+    if @user.flags.admin or @user.flags.moderator
+      user = @content.users_by_nick[data.user]
+      if user? and not user.flags.admin and not user.flags.moderator
+        user.setFlag "approved",data.approved
+        @send
+          name:"set_project_approved"
+          user: data.user
+          approved: data.approved
           request_id: data.request_id
 
   setProjectTags:(data)->
@@ -639,8 +704,20 @@ class @Session
 
             project.set "libs",data.value
 
+        when "tabs"
+          if typeof data.value == "object"
+            project.set "tabs",data.value
+
+        when "plugins"
+          if typeof data.value == "object"
+            project.set "plugins",data.value
+
+        when "libraries"
+          if typeof data.value == "object"
+            project.set "libraries",data.value
+
         when "type"
-          project.setType data.value if typeof data.value == "string"
+          @content.setProjectType project,data.value if typeof data.value == "string"
 
         when "orientation"
           project.setOrientation data.value if typeof data.value == "string"
@@ -649,13 +726,28 @@ class @Session
           project.setAspect data.value if typeof data.value == "string"
 
         when "graphics"
-          if @user.flags.m3d
-            project.setGraphics data.value if typeof data.value == "string"
+          project.setGraphics data.value if typeof data.value == "string"
+
+        when "unlisted"
+          project.set "unlisted",if data.value then true else false
+
+        when "language"
+          project.set "language",data.value
 
       if project.manager?
         project.manager.propagateOptions @
 
       project.touch()
+
+
+  setProjectProperty:(data)->
+    return @sendError("not connected") if not @user?
+    return @sendError("no project") if not data.project?
+    return @sendError("no property") if not data.property?
+
+    project = @user.findProject(data.project)
+    if project?
+      project.setProperty data.property,data.value
 
   deleteProject:(data)->
     return @sendError("not connected") if not @user?
@@ -685,16 +777,24 @@ class @Session
           code: p.code
           description: p.description
           tags: p.tags
+          flags: p.flags
+          poster: p.files? and p.files["sprites/poster.png"]?
           platforms: p.platforms
           controls: p.controls
           type: p.type
           orientation: p.orientation
           aspect: p.aspect
           graphics: p.graphics
+          language: p.language
           libs: p.libs
+          tabs: p.tabs
+          plugins: p.plugins
+          libraries: p.libraries
+          properties: p.properties
           date_created: p.date_created
           last_modified: p.last_modified
           public: p.public
+          unlisted: p.unlisted
           size: p.getSize()
           users: p.listUsers()
 
@@ -713,16 +813,23 @@ class @Session
           code: p.code
           description: p.description
           tags: p.tags
+          flags: p.flags
+          poster: p.files? and p.files["sprites/poster.png"]?
           platforms: p.platforms
           controls: p.controls
           type: p.type
           orientation: p.orientation
           aspect: p.aspect
           graphics: p.graphics
+          language: p.language
           libs: p.libs
+          tabs: p.tabs
+          plugins: p.plugins
+          libraries: p.libraries
           date_created: p.date_created
           last_modified: p.last_modified
           public: p.public
+          unlisted: p.unlisted
           users: p.listUsers()
 
     @send
@@ -851,29 +958,148 @@ class @Session
         source = @content.hot_projects
 
     list = []
-    for p,i in source
-      break if list.length>=300
+    tags = if Array.isArray(data.tags) then data.tags else []
+    search = if typeof data.search == "string" then data.search else ""
+    search = search.trim()
+    type = data.type or "all"
+    offset = data.offset or 0
+
+    for i in [offset..source.length-1] by 1
+      p = source[i]
+
+      break if list.length >= 25
+      offset = i+1
+
       if p.public and not p.deleted and not p.owner.flags.censored
+        if search
+          found = false
+          found |= p.title.toLowerCase().includes(search)
+          found |= p.description.toLowerCase().includes(search)
+          found |= p.owner.nick.toLowerCase().includes(search)
+          for t in p.tags
+            found |= t.includes(search)
+
+          continue if not found
+
+        if tags.length > 0
+          found = false
+          for t in tags
+            if p.tags.indexOf(t)>=0
+              found = true
+              break
+          continue if not found
+
+        if type != "all" and p.type != type
+          continue
+
         list.push
           id: p.id
           title: p.title
           description: p.description
+          poster: p.files? and p.files["sprites/poster.png"]?
           type: p.type
           tags: p.tags
+          flags: p.flags
           slug: p.slug
           owner: p.owner.nick
           owner_info:
             tier: p.owner.flags.tier
             profile_image: p.owner.flags.profile_image
+            approved: p.owner.flags.approved
           likes: p.likes
           liked: @user? and @user.isLiked(p.id)
           tags: p.tags
           date_published: p.first_published
+          last_modified: p.last_modified
           graphics: p.graphics
+          language: p.language
           libs: p.libs
+          tabs: p.tabs
+          plugins: p.plugins
+          libraries: p.libraries
+
+    tags = []
+    for t in @content.sorted_tags
+      tags.push t.tag
+      break if tags.length>50
 
     @send
       name: "public_projects"
+      list: list
+      tags: tags
+      offset: offset
+      request_id: data.request_id
+
+
+  getPublicPlugins:(data)->
+    source = @content.plugin_projects
+    list = []
+
+    for p in source
+      if p.public and not p.deleted and not p.owner.flags.censored
+        list.push
+          id: p.id
+          title: p.title
+          description: p.description
+          poster: p.files? and p.files["sprites/poster.png"]?
+          type: p.type
+          tags: p.tags
+          flags: p.flags
+          slug: p.slug
+          owner: p.owner.nick
+          owner_info:
+            tier: p.owner.flags.tier
+            profile_image: p.owner.flags.profile_image
+            approved: p.owner.flags.approved
+          likes: p.likes
+          liked: @user? and @user.isLiked(p.id)
+          date_published: p.first_published
+          last_modified: p.last_modified
+          graphics: p.graphics
+          language: p.language
+          libs: p.libs
+          tabs: p.tabs
+          plugins: p.plugins
+          libraries: p.libraries
+
+    @send
+      name: "public_plugins"
+      list: list
+      request_id: data.request_id
+
+  getPublicLibraries:(data)->
+    source = @content.library_projects
+    list = []
+
+    for p in source
+      if p.public and not p.deleted and not p.owner.flags.censored
+        list.push
+          id: p.id
+          title: p.title
+          description: p.description
+          poster: p.files? and p.files["sprites/poster.png"]?
+          type: p.type
+          tags: p.tags
+          flags: p.flags
+          slug: p.slug
+          owner: p.owner.nick
+          owner_info:
+            tier: p.owner.flags.tier
+            profile_image: p.owner.flags.profile_image
+            approved: p.owner.flags.approved
+          likes: p.likes
+          liked: @user? and @user.isLiked(p.id)
+          date_published: p.first_published
+          last_modified: p.last_modified
+          graphics: p.graphics
+          language: p.language
+          libs: p.libs
+          tabs: p.tabs
+          plugins: p.plugins
+          libraries: p.libraries
+
+    @send
+      name: "public_libraries"
       list: list
       request_id: data.request_id
 
@@ -889,19 +1115,26 @@ class @Session
             id: p.id
             title: p.title
             description: p.description
+            poster: p.files? and p.files["sprites/poster.png"]?
             type: p.type
             tags: p.tags
+            flags: p.flags
             slug: p.slug
             owner: p.owner.nick
             owner_info:
               tier: p.owner.flags.tier
               profile_image: p.owner.flags.profile_image
+              approved: p.owner.flags.approved
             likes: p.likes
             liked: @user? and @user.isLiked(p.id)
-            tags: p.tags
             date_published: p.first_published
+            last_modified: p.last_modified
             graphics: p.graphics
+            language: p.language
             libs: p.libs
+            tabs: p.tabs
+            plugins: p.plugins
+            libraries: p.libraries
 
           @send
             name: "get_public_project"
@@ -961,13 +1194,15 @@ class @Session
     project = @content.projects[data.project] if data.project?
     return @sendError("project not found",data.request_id) if not project?
 
-    user = @content.findUserByNick(data.user) if data.user?
-    return @sendError("user not found",data.request_id) if not user?
+    nick = data.user
+    return if not nick?
+
+    user = @content.findUserByNick(nick)
 
     return if @user != project.owner and @user != user
 
     for link in project.users
-      if link.user == user
+      if link? and link.user? and link.user.nick == nick
         link.remove()
         if @user == project.owner
           @setCurrentProject project
@@ -979,8 +1214,9 @@ class @Session
         if project.manager?
           project.manager.propagateUserListChange()
 
-        for li in user.listeners
-          li.getProjectList()
+        if user?
+          for li in user.listeners
+            li.getProjectList()
 
     return
 

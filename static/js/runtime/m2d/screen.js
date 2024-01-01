@@ -31,9 +31,11 @@ this.Screen = (function() {
     return this["interface"] = {
       width: this.width,
       height: this.height,
-      render: function(scene, camera) {
-        return screen.render(scene, camera);
-      }
+      render: (function(_this) {
+        return function(scene, camera) {
+          return screen.render(scene, camera);
+        };
+      })(this)
     };
   };
 
@@ -131,18 +133,22 @@ this.Screen = (function() {
       r = this.width / camera.fov;
     }
     scene.scale.x = r;
-    scene.scale.y = r;
-    return this.renderer.render(scene);
+    scene.scale.y = -r;
+    this.renderer.render(scene);
+    if (this.take_picture_callback != null) {
+      this.take_picture_callback(this.canvas.toDataURL());
+      return this.take_picture_callback = null;
+    }
   };
 
   Screen.prototype.startControl = function(element) {
     this.element = element;
-    this.canvas.addEventListener("touchstart", (function(_this) {
+    document.addEventListener("touchstart", (function(_this) {
       return function(event) {
         return _this.touchStart(event);
       };
     })(this));
-    this.canvas.addEventListener("touchmove", (function(_this) {
+    document.addEventListener("touchmove", (function(_this) {
       return function(event) {
         return _this.touchMove(event);
       };
@@ -157,12 +163,12 @@ this.Screen = (function() {
         return _this.touchRelease(event);
       };
     })(this));
-    this.canvas.addEventListener("mousedown", (function(_this) {
+    document.addEventListener("mousedown", (function(_this) {
       return function(event) {
         return _this.mouseDown(event);
       };
     })(this));
-    this.canvas.addEventListener("mousemove", (function(_this) {
+    document.addEventListener("mousemove", (function(_this) {
       return function(event) {
         return _this.mouseMove(event);
       };
@@ -170,6 +176,16 @@ this.Screen = (function() {
     document.addEventListener("mouseup", (function(_this) {
       return function(event) {
         return _this.mouseUp(event);
+      };
+    })(this));
+    document.addEventListener("mousewheel", (function(_this) {
+      return function(event) {
+        return _this.mouseWheel(event);
+      };
+    })(this));
+    document.addEventListener("DOMMouseScroll", (function(_this) {
+      return function(event) {
+        return _this.mouseWheel(event);
       };
     })(this));
     return this.ratio = devicePixelRatio;
@@ -296,6 +312,19 @@ this.Screen = (function() {
     }
     this.mouse.pressed = Math.min(1, this.mouse.left + this.mouse.right + this.mouse.middle);
     return false;
+  };
+
+  Screen.prototype.mouseWheel = function(e) {
+    e.preventDefault();
+    if (e.wheelDelta < 0 || e.detail > 0) {
+      return this.wheel = -1;
+    } else {
+      return this.wheel = 1;
+    }
+  };
+
+  Screen.prototype.takePicture = function(take_picture_callback) {
+    this.take_picture_callback = take_picture_callback;
   };
 
   return Screen;

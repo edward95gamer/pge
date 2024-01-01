@@ -8,9 +8,10 @@ class AppUI
       "sounds"
       "music"
       "doc"
-#      "server"
+      "sync"
       "options"
       "publish"
+      "tabs"
     ]
 
     @menuoptions = [
@@ -23,14 +24,6 @@ class AppUI
       "usersettings"
     ]
 
-    @allowed_sections =
-      "code": true
-      "sprites": true
-      "maps": true
-      "doc": true
-      "options": true
-      "publish": true
-
     for s in @sections
       do (s)=>
         if document.getElementById("menuitem-#{s}")?
@@ -38,8 +31,6 @@ class AppUI
             @setSection(s,true)
 
     @warning_messages = []
-
-    @updateAllowedSections()
 
     document.addEventListener "keydown",(e)=>
       if (if window.navigator.platform.match("Mac") then e.metaKey else e.ctrlKey) && e.keyCode == 83
@@ -79,12 +70,36 @@ class AppUI
       document.getElementById("usersetting-block-newsletter").style.display = "none"
       document.getElementById("usersetting-block-account-type").style.display = "none"
 
+      document.body.classList.add "standalone"
+
     #@setSection("options")
     @createLoginFunctions()
 
+
+
+    advanced = document.getElementById("advanced-create-project-options-button")
     @setAction "create-project-button",()=>
       @show "create-project-overlay"
       @focus "create-project-title"
+      document.getElementById("createprojectoption-type").value = "app"
+      document.getElementById("createprojectoption-language").value = "microscript_v2"
+      document.getElementById("createprojectoption-graphics").value = "M1"
+      document.getElementById("create-project-option-lib-matterjs").checked = false
+      document.getElementById("create-project-option-lib-cannonjs").checked = false
+      @hideAdvanced()
+
+    @hideAdvanced = ()=>
+      advanced.classList.remove "open"
+      document.getElementById("advanced-create-project-options").style.display = "none"
+      advanced.childNodes[1].innerText = @app.translator.get "Advanced"
+
+    advanced.addEventListener "click",()=>
+      if advanced.classList.contains "open"
+        @hideAdvanced()
+      else
+        advanced.classList.add "open"
+        document.getElementById("advanced-create-project-options").style.display = "block"
+        advanced.childNodes[1].innerText = @app.translator.get "Hide advanced options"
 
     @setAction "import-project-button",()=>
       input = document.createElement "input"
@@ -98,9 +113,6 @@ class AppUI
 
       input.click()
 
-    @setAction "create-project-window",(event)=>
-      event.stopPropagation()
-
     @setAction "home-action-explore",()=>
       @setMainSection("explore")
 
@@ -108,29 +120,37 @@ class AppUI
       @setMainSection("projects")
 
     document.getElementById("create-project-overlay").addEventListener "mousedown",(event)=>
-      @hide "create-project-overlay"
-
-    document.getElementById("create-project-window").addEventListener "mousedown",(event)=>
-      event.stopPropagation()
+      b = document.getElementById("create-project-window").getBoundingClientRect()
+      if event.clientX<b.x or event.clientX>b.x+b.width or event.clientY<b.y or event.clientY>b.y+b.height
+        @hide "create-project-overlay"
+      true
 
     @setAction "create-project-submit",()=>
       title = @get("create-project-title").value
       slug = RegexLib.slugify(title)
       if title.length>0 and slug.length>0
-        @app.createProject(title,slug)
+        libs = []
+        if document.getElementById("create-project-option-lib-matterjs").checked
+          libs.push "matterjs"
+        if document.getElementById("create-project-option-lib-cannonjs").checked
+          libs.push "cannonjs"
+
+        @app.createProject title,slug,
+          type: document.getElementById("createprojectoption-type").value
+          language: document.getElementById("createprojectoption-language").value
+          graphics: document.getElementById("createprojectoption-graphics").value
+          libs: libs
+
         @hide "create-project-overlay"
         @get("create-project-title").value = ""
 
     @doc_splitbar = new SplitBar("doc-section","horizontal")
     @code_splitbar = new SplitBar("code-section","horizontal")
     @runtime_splitbar = new SplitBar("runtime-container","vertical")
-    @runtime_splitbar.setPosition(67)
-    @sprites_splitbar = new SplitBar("sprites-section","horizontal")
-    @sprites_splitbar.setPosition(20)
-    @maps_splitbar = new SplitBar("maps-section","horizontal")
-    @maps_splitbar.setPosition(20)
-    @mapeditor_splitbar = new SplitBar("mapeditor-container","horizontal")
-    @mapeditor_splitbar.setPosition(80)
+    @runtime_splitbar.initPosition(67)
+    @debug_splitbar = new SplitBar("terminal-debug-container","horizontal")
+    @debug_splitbar.closed2 = true
+    @debug_splitbar.splitbar_size = 12
 
     @setAction "backtoprojects",()=>
       if @app.project?
@@ -159,6 +179,7 @@ class AppUI
       list = document.getElementById("project-list").childNodes
       if search.trim().length>0
         for p in list
+          continue if not p.dataset.title?
           ok = p.dataset.title.toLowerCase().indexOf(search)>=0
           ok |= p.dataset.description.toLowerCase().indexOf(search)>=0
           ok |= p.dataset.tags.toLowerCase().indexOf(search)>=0
@@ -264,6 +285,9 @@ class AppUI
     @hide "projectview"
     @show "myprojects"
     @app.runwindow.projectClosed()
+    @app.debug.projectClosed()
+    @app.tab_manager.projectClosed()
+    @app.lib_manager.projectClosed()
     @app.project = null
     @project = null
     @app.updateProjectList()
@@ -287,34 +311,38 @@ class AppUI
 
         return
 
+    menuitem = document.getElementById("menuitem-#{section}")
+    if menuitem?
+      menuitem.classList.add "selected"
+
+    list = document.querySelectorAll ".menuitem-plugin"
+    for item in list
+      if item.id != "menuitem-#{section}"
+        item.classList.remove "selected"
+
+    @app.tab_manager.setTabView section
+
     if section == "sprites"
       @app.sprite_editor.spriteview.windowResized()
 
     if section == "code"
       @code_splitbar.update()
+      @debug_splitbar.update()
       @runtime_splitbar.update()
       @app.runwindow.windowResized()
+      @app.editor.editor.resize()
+      @app.editor.update()
 
     if section == "sprites"
-      @sprites_splitbar.update()
-      if @sprites_splitbar.position/100*@sprites_splitbar.total_width<64
-        @sprites_splitbar.setPosition 100*150/@sprites_splitbar.total_width
-      else if @sprites_splitbar.position>90
-        @sprites_splitbar.setPosition 50
+      @app.sprite_editor.update()
 
     if section == "maps"
-      if @mapeditor_splitbar.position>90
-        @mapeditor_splitbar.setPosition 80
-
-      if @maps_splitbar.position/100*@maps_splitbar.total_width<90
-        @maps_splitbar.setPosition 100*210/@maps_splitbar.total_width
-      else if @maps_splitbar.position>90
-        @maps_splitbar.setPosition 50
-      @maps_splitbar.update()
-      @mapeditor_splitbar.update()
+      @app.map_editor.update()
 
     if section == "doc"
       @doc_splitbar.update()
+      @app.doc_editor.editor.resize()
+      @app.doc_editor.checkTutorial()
 
     if section == "sounds"
       @app.sound_editor.update()
@@ -323,11 +351,22 @@ class AppUI
     if section == "music"
       @app.music_editor.update()
 
+    if section == "assets"
+      @app.assets_manager.update()
+
+    if section == "sync"
+      @app.sync.update()
+
     if section == "options"
       @app.options.update()
 
+    app.editor.editor.setReadOnly section != "code"
+    app.doc_editor.editor.setReadOnly section != "doc"
+
     if useraction and @app.project?
       @app.app_state.pushState "project.#{@app.project.slug}.#{section}","/projects/#{@app.project.slug}/#{section}/"
+
+    @app.runwindow.hideAll()
 
   accountRequired:(callback)->
     @logged_callback = callback
@@ -372,11 +411,17 @@ class AppUI
 
     if section == "projects"
       @code_splitbar.update()
+      @debug_splitbar.update()
       @runtime_splitbar.update()
       @app.runwindow.windowResized()
 
     if section == "explore"
       @app.explore.update()
+    else
+      @app.explore.closed()
+
+    if section == "help"
+      @app.documentation.updateViewPos()
 
     if section == "about"
       @app.about.setSection("about")
@@ -385,6 +430,7 @@ class AppUI
       @app.tutorials.load()
 
     #@app.explore.closeDetails() if section != "explore"
+    @app.runwindow.hideAll()
     return
 
   setDisplay:(element,value)->
@@ -569,14 +615,13 @@ class AppUI
       @get("user-nick").innerHTML = nick
       if @project?
         @get("project-name").innerHTML = @project.title
-        PixelatedImage.setURL @get("project-icon"),location.origin+"/#{@project.owner.nick}/#{@project.slug}/#{@project.code}/icon.png",32
+        @get("project-icon").src = location.origin+"/#{@project.owner.nick}/#{@project.slug}/#{@project.code}/icon.png"
 
     @get("user-nick").style.display = "inline-block"
     #@show "user-info"
     @show("login-info")
     @hide "login-overlay"
 
-    @updateAllowedSections()
     @setMainSection "projects",location.pathname.length<4 # home page with language variation => record jump to /projects/
 
     # @addWarningMessage """Join <a target="_blank" href="https://itch.io/jam/microstudio-mini-jam-2">microStudio mini-jam #2</a>! From October 24/25. More info in the <a target="_blank" href="https://microstudio.dev/community/news/mini-jam-2/235/">Community Forum</a> and <a target="_blank" href="https://discord.gg/BDMqjxd">Discord</a>""","fa-info-circle","mini_jam_2_#{Math.floor(Date.now()/1000/3600/12)}",true
@@ -591,30 +636,6 @@ class AppUI
     #  @hide "projectview"
       #@get("menu-projects").style.display = "inline-block"
     #@setMainSection "projects"
-
-
-  updateAllowedSections:()->
-    if @app.user?
-      #if @app.user.flags.admin
-      @allowed_sections.sounds = true
-      @allowed_sections.music = true
-
-      if @app.user.flags.experimental
-        document.getElementById("project-option-graphics").style.display = "block"
-        document.getElementById("project-option-libs").style.display = "block"
-        #@allowed_sections.assets = @app.project? and @app.project.graphics == "M3D"
-        #if @app.project? and @app.project.graphics == "M3D"
-        #  @app.assets_manager.init()
-
-    for s in @sections
-      e = document.getElementById("menuitem-#{s}")
-      if e?
-        if @allowed_sections[s]
-          e.style.display = "block"
-        else
-          e.style.display = "none"
-
-    return
 
   userDisconnected:()->
     @get("login-button").style.display = "block"
@@ -665,7 +686,7 @@ class AppUI
     clone_button.addEventListener "click",(event)=>
       event.stopPropagation()
       event.stopImmediatePropagation()
-      if confirm(@app.translator.get("Do you want to clone this project?"))
+      ConfirmDialog.confirm @app.translator.get("Do you want to clone this project?"),@app.translator.get("Clone"),@app.translator.get("Cancel"),()=>
         @app.cloneProject p
 
     delete_button = document.createElement "div"
@@ -680,7 +701,9 @@ class AppUI
     delete_button.addEventListener "click",(event)=>
       event.stopPropagation()
       event.stopImmediatePropagation()
-      if confirm(if p.owner.nick == @app.nick then @app.translator.get("Really delete this project?") else @app.translator.get("Really quit this project?"))
+      msg = if p.owner.nick == @app.nick then @app.translator.get("Really delete this project?") else @app.translator.get("Really quit this project?")
+      ok = if p.owner.nick == @app.nick then @app.translator.get("Delete") else @app.translator.get("Quit")
+      ConfirmDialog.confirm msg,ok,@app.translator.get("Cancel"),()=>
         @app.deleteProject p
 
     title = document.createElement "div"
@@ -690,8 +713,20 @@ class AppUI
 
     element.appendChild document.createElement "br"
 
-    icon = PixelatedImage.create location.origin+"/#{p.owner.nick}/#{p.slug}/#{p.code}/icon.png",144
+    icon = new Image
+    icon.src = location.origin+"/#{p.owner.nick}/#{p.slug}/#{p.code}/icon.png"
+    icon.classList.add "pixelated"
     element.appendChild icon
+
+    if p.poster
+      element.style.background = "linear-gradient(to bottom, hsla(200,20%,20%,0.6), hsla(200,20%,20%,0.9)),url(/#{p.owner.nick}/#{p.slug}/#{p.code}/poster.png)"
+      element.style["background-size"] = "cover"
+      element.style["background-opacity"] = .5
+
+      icon.style.width = "104px"
+      icon.style.height = "104px"
+      icon.style["margin-top"] = "40px"
+      icon.style["box-shadow"] = "0 0 10px 1px #000"
 
     element.addEventListener "click",()=>
       @app.openProject p
@@ -774,16 +809,18 @@ class AppUI
 
   setProject:(@project,useraction=true)->
     @get("project-name").innerHTML = @project.title
-    PixelatedImage.setURL @get("project-icon"),location.origin+"/#{@project.owner.nick}/#{@project.slug}/#{@project.code}/icon.png",32
+    @get("project-icon").src = location.origin+"/#{@project.owner.nick}/#{@project.slug}/#{@project.code}/icon.png"
     @setSection "code",useraction
     @show "projectview"
     @hide "myprojects"
     @project.addListener @
-    @code_splitbar.setPosition(50)
-    @runtime_splitbar.setPosition(50)
+    @code_splitbar.initPosition(50)
+    @debug_splitbar.closed2 = true
+    @debug_splitbar.update()
+    @runtime_splitbar.initPosition(50)
     @app.runwindow.terminal.start()
     @updateActiveUsers()
-    @updateAllowedSections()
+    @doc_splitbar.initPosition(50)
 
   projectUpdate:(change)->
     if change == "spritelist"
@@ -921,7 +958,10 @@ class AppUI
     div.appendChild span
 
     if tier
-      icon = PixelatedImage.create location.origin+"/microstudio/patreon/badges/sprites/#{tier}.png",32
+      icon = new Image
+      icon.src = location.origin+"/microstudio/patreon/badges/sprites/#{tier}.png"
+      icon.classList.add "pixelated"
+      icon.style = "width: 32px; height: 32px;"
       icon.alt = icon.title = @app.getTierName tier
       div.appendChild icon
 
@@ -949,3 +989,19 @@ class AppUI
   resetImportButton:()->
     document.getElementById("import-project-button").innerHTML = """<i class="fa fa-upload"></i> #{@app.translator.get("Import Project")}"""
     document.getElementById("import-project-button").style.removeProperty "background"
+
+  bumpElement:(select)->
+    element = document.querySelector select
+    if element?
+      start = Date.now()
+      interval = setInterval (()->
+        t = (Date.now()-start)/300
+        if t >= 1
+          element.style.transform = "none"
+          clearInterval interval
+        else
+          t = Math.pow(t,.8)
+          s = 1+.5*Math.sin(t*Math.PI)
+          d = -.5*Math.sin(t*Math.PI)*20
+          element.style.transform = "scale(#{s}) rotateZ(#{d}deg)"
+        ),16

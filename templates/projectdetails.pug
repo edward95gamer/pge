@@ -1,7 +1,7 @@
 div#project-details-info
   div.inside
     div.project-details-right
-      img#project-details-image
+      img.pixelated#project-details-image
       br
       br
       br
@@ -63,12 +63,13 @@ div#project-details-contents
       li#project-contents-menu-sprites <i class="fa fa-image"></i><br /> #{translator.get("Sprites")}
       li#project-contents-menu-sounds <i class="fa fa-volume-up"></i><br /> #{translator.get("Sounds")}
       li#project-contents-menu-music <i class="fa fa-music"></i><br /> #{translator.get("Music")}
+      li#project-contents-menu-assets <i class="fa fa-cube"></i><br /> #{translator.get("Assets")}
       //- li#project-contents-menu-maps <i class="fa fa-map"></i><br /> #{translator.get("Maps")}
       li#project-contents-menu-doc <i class="fa fa-book"></i><br /> #{translator.get("Doc")}
 
     div#project-contents-view
       div.code
-        div.code-list
+        div.assetlist.code-list
         div.import-button#project-contents-source-import
           i(class="fa fa-download")
           span Import source file
@@ -76,7 +77,12 @@ div#project-details-contents
 
       div.sprites
         div.item-list-container
-          div.sprite-list
+          div.assetlist.sprite-list
+
+        div.import-button#project-contents-sprite-import
+          i(class="fa fa-download")
+          span Import sprite
+
         div.export-panel
           a
             i.fa.fa-download
@@ -84,11 +90,15 @@ div#project-details-contents
 
       div.sounds
         div.item-list-container
-          div.sound-list
+          div.assetlist.sound-list
 
       div.music
         div.item-list-container
-          div.music-list
+          div.assetlist.music-list
+
+      div.assets
+        div.item-list-container
+          div.assetlist.asset-list
 
       div.doc
         div.doc-render

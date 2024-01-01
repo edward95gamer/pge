@@ -1,3 +1,5 @@
+var arrayBufferToBase64, loadFile, loadLameJSLib, loadWaveFileLib, saveFile, writeProjectFile;
+
 this.Runtime = (function() {
   function Runtime(url1, sources, resources, listener) {
     this.url = url1;
@@ -8,10 +10,12 @@ this.Runtime = (function() {
     this.audio = new AudioCore(this);
     this.keyboard = new Keyboard();
     this.gamepad = new Gamepad();
+    this.asset_manager = new AssetManager(this);
     this.sprites = {};
     this.maps = {};
     this.sounds = {};
     this.music = {};
+    this.assets = {};
     this.touch = {};
     this.mouse = this.screen.mouse;
     this.previous_init = null;
@@ -25,10 +29,12 @@ this.Runtime = (function() {
       };
     })(this);
     this.update_memory = {};
+    this.time_machine = new TimeMachine(this);
+    this.createDropFeature();
   }
 
   Runtime.prototype.updateSource = function(file, src, reinit) {
-    var err, init, parser;
+    var err, init;
     if (reinit == null) {
       reinit = false;
     }
@@ -42,21 +48,11 @@ this.Runtime = (function() {
     this.audio.cancelBeeps();
     this.screen.clear();
     try {
-      parser = new Parser(src, file);
-      parser.parse();
-      if (parser.error_info != null) {
-        err = parser.error_info;
-        err.type = "compile";
-        err.file = file;
-        this.listener.reportError(err);
-        return false;
-      } else {
-        this.listener.postMessage({
-          name: "compile_success",
-          file: file
-        });
-      }
-      this.vm.run(parser.program);
+      this.vm.run(src, 3000, file);
+      this.listener.postMessage({
+        name: "compile_success",
+        file: file
+      });
       this.reportWarnings();
       if (this.vm.error_info != null) {
         err = this.vm.error_info;
@@ -65,10 +61,17 @@ this.Runtime = (function() {
         this.listener.reportError(err);
         return false;
       }
-      init = this.vm.context.global.init;
-      if ((init != null) && init.source !== this.previous_init && reinit) {
-        this.previous_init = init.source;
-        this.vm.call("init");
+      if (this.vm.runner.getFunctionSource != null) {
+        init = this.vm.runner.getFunctionSource("init");
+        if ((init != null) && init !== this.previous_init && reinit) {
+          this.previous_init = init;
+          this.vm.call("init");
+          if (this.vm.error_info != null) {
+            err = this.vm.error_info;
+            err.type = "init";
+            this.listener.reportError(err);
+          }
+        }
       }
       return true;
     } catch (error) {
@@ -83,35 +86,36 @@ this.Runtime = (function() {
   };
 
   Runtime.prototype.start = function() {
-    var i, j, k, key, l, len, len1, len2, len3, m, n, name, ref, ref1, ref2, ref3, ref4, s, value;
+    var a, i, j, k, key, l, len1, len2, len3, len4, len5, m, n, name, o, ref, ref1, ref2, ref3, ref4, ref5, s, value;
     ref = this.resources.images;
-    for (j = 0, len = ref.length; j < len; j++) {
+    for (j = 0, len1 = ref.length; j < len1; j++) {
       i = ref[j];
-      s = new Sprite(this.url + "sprites/" + i.file + "?v=" + i.version, null, i.properties);
-      name = i.file.split(".")[0];
-      s.name = name;
-      this.sprites[name] = s;
-      s.loaded = (function(_this) {
+      s = LoadSprite(this.url + "sprites/" + i.file + "?v=" + i.version, i.properties, (function(_this) {
         return function() {
           _this.updateMaps();
           return _this.checkStartReady();
         };
-      })(this);
+      })(this));
+      name = i.file.split(".")[0].replace(/-/g, "/");
+      s.name = name;
+      this.sprites[name] = s;
     }
     if (Array.isArray(this.resources.maps)) {
       ref1 = this.resources.maps;
-      for (k = 0, len1 = ref1.length; k < len1; k++) {
+      for (k = 0, len2 = ref1.length; k < len2; k++) {
         m = ref1[k];
-        name = m.file.split(".")[0];
-        this.maps[name] = new MicroMap(this.url + ("maps/" + m.file + "?v=" + m.version), 0, 0, 0, this.sprites);
-        this.maps[name].name = name;
-        this.maps[name].loaded = (function(_this) {
+        name = m.file.split(".")[0].replace(/-/g, "/");
+        this.maps[name] = LoadMap(this.url + ("maps/" + m.file + "?v=" + m.version), (function(_this) {
           return function() {
             return _this.checkStartReady();
           };
-        })(this);
+        })(this));
+        this.maps[name].name = name;
       }
     } else if (this.resources.maps != null) {
+      if (window.player == null) {
+        window.player = this.listener;
+      }
       ref2 = this.resources.maps;
       for (key in ref2) {
         value = ref2[key];
@@ -119,7 +123,7 @@ this.Runtime = (function() {
       }
     }
     ref3 = this.resources.sounds;
-    for (l = 0, len2 = ref3.length; l < len2; l++) {
+    for (l = 0, len3 = ref3.length; l < len3; l++) {
       s = ref3[l];
       name = s.file.split(".")[0];
       s = new Sound(this.audio, this.url + "sounds/" + s.file + "?v=" + s.version);
@@ -127,12 +131,20 @@ this.Runtime = (function() {
       this.sounds[name] = s;
     }
     ref4 = this.resources.music;
-    for (n = 0, len3 = ref4.length; n < len3; n++) {
+    for (n = 0, len4 = ref4.length; n < len4; n++) {
       m = ref4[n];
       name = m.file.split(".")[0];
       m = new Music(this.audio, this.url + "music/" + m.file + "?v=" + m.version);
       m.name = name;
       this.music[name] = m;
+    }
+    ref5 = this.resources.assets;
+    for (o = 0, len5 = ref5.length; o < len5; o++) {
+      a = ref5[o];
+      name = a.file.split(".")[0];
+      name = name.replace(/-/g, "/");
+      a.name = name;
+      this.assets[name] = a;
     }
   };
 
@@ -159,12 +171,12 @@ this.Runtime = (function() {
   };
 
   Runtime.prototype.startReady = function() {
-    var file, global, init, j, len, lib, meta, namespace, ref, ref1, src;
+    var err, file, global, init, j, len1, lib, meta, namespace, ref, ref1, src;
     meta = {
       print: (function(_this) {
         return function(text) {
-          if (typeof text === "object") {
-            text = Program.toString(text);
+          if ((typeof text === "object" || typeof text === "function") && (_this.vm != null)) {
+            text = _this.vm.runner.toString(text);
           }
           return _this.listener.log(text);
         };
@@ -178,10 +190,16 @@ this.Runtime = (function() {
       sprites: this.sprites,
       sounds: this.sounds,
       music: this.music,
+      assets: this.assets,
+      asset_manager: this.asset_manager.getInterface(),
       maps: this.maps,
       touch: this.touch,
       mouse: this.mouse,
-      fonts: window.fonts
+      fonts: window.fonts,
+      Sound: Sound.createSoundClass(this.audio),
+      Image: msImage,
+      Sprite: Sprite,
+      Map: MicroMap
     };
     if (window.graphics === "M3D") {
       global.M3D = M3D;
@@ -197,7 +215,7 @@ this.Runtime = (function() {
       BABYLON.runtime = this;
     }
     ref = window.ms_libs;
-    for (j = 0, len = ref.length; j < len; j++) {
+    for (j = 0, len1 = ref.length; j < len1; j++) {
       lib = ref[j];
       switch (lib) {
         case "matterjs":
@@ -209,15 +227,45 @@ this.Runtime = (function() {
     }
     namespace = location.pathname;
     this.vm = new MicroVM(meta, global, namespace, location.hash === "#transpiler");
+    this.vm.context.global.system.pause = (function(_this) {
+      return function() {
+        return _this.listener.codePaused();
+      };
+    })(this);
+    this.vm.context.global.system.exit = (function(_this) {
+      return function() {
+        return _this.exit();
+      };
+    })(this);
+    this.vm.context.global.system.file = System.file;
+    this.vm.context.global.system.javascript = System.javascript;
+    if (window.ms_in_editor) {
+      this.vm.context.global.system.project = new ProjectInterface(this)["interface"];
+    }
+    System.runtime = this;
     ref1 = this.sources;
     for (file in ref1) {
       src = ref1[file];
       this.updateSource(file, src, false);
     }
-    init = this.vm.context.global.init;
-    if (init != null) {
-      this.previous_init = init.source;
+    if (this.vm.runner.getFunctionSource != null) {
+      init = this.vm.runner.getFunctionSource("init");
+      if (init != null) {
+        this.previous_init = init;
+        this.vm.call("init");
+        if (this.vm.error_info != null) {
+          err = this.vm.error_info;
+          err.type = "draw";
+          this.listener.reportError(err);
+        }
+      }
+    } else {
       this.vm.call("init");
+      if (this.vm.error_info != null) {
+        err = this.vm.error_info;
+        err.type = "draw";
+        this.listener.reportError(err);
+      }
     }
     this.dt = 1000 / 60;
     this.last_time = Date.now();
@@ -228,7 +276,10 @@ this.Runtime = (function() {
         return _this.timer();
       };
     })(this));
-    return this.screen.startControl();
+    this.screen.startControl();
+    return this.listener.postMessage({
+      name: "started"
+    });
   };
 
   Runtime.prototype.updateMaps = function() {
@@ -240,20 +291,12 @@ this.Runtime = (function() {
     }
   };
 
-  Runtime.prototype.runCommand = function(command) {
-    var err, parser, res, warnings;
+  Runtime.prototype.runCommand = function(command, callback) {
+    var err, res, warnings;
     try {
-      parser = new Parser(command);
-      parser.parse();
-      if (parser.error_info != null) {
-        err = parser.error_info;
-        err.type = "compile";
-        this.listener.reportError(err);
-        return 0;
-      }
       warnings = this.vm.context.warnings;
       this.vm.clearWarnings();
-      res = this.vm.run(parser.program);
+      res = this.vm.run(command, void 0, void 0, callback);
       this.reportWarnings();
       this.vm.context.warnings = warnings;
       if (this.vm.error_info != null) {
@@ -261,7 +304,15 @@ this.Runtime = (function() {
         err.type = "exec";
         this.listener.reportError(err);
       }
-      return res;
+      if (this.watching_variables) {
+        this.watchStep();
+      }
+      if (callback == null) {
+        return res;
+      } else if (res != null) {
+        callback(res);
+      }
+      return null;
     } catch (error) {
       err = error;
       return this.listener.reportError(err);
@@ -282,9 +333,9 @@ this.Runtime = (function() {
   Runtime.prototype.projectFileDeleted = function(type, file) {
     switch (type) {
       case "sprites":
-        return delete this.sprites[file.substring(0, file.length - 4)];
+        return delete this.sprites[file.substring(0, file.length - 4).replace(/-/g, "/")];
       case "maps":
-        return delete this.maps[file.substring(0, file.length - 5)];
+        return delete this.maps[file.substring(0, file.length - 5).replace(/-/g, "/")];
     }
   };
 
@@ -295,7 +346,9 @@ this.Runtime = (function() {
   };
 
   Runtime.prototype.updateSprite = function(name, version, data, properties) {
-    var img;
+    var img, slug;
+    slug = name;
+    name = name.replace(/-/g, "/");
     if (data != null) {
       data = "data:image/png;base64," + data;
       if (this.sprites[name] != null) {
@@ -304,52 +357,51 @@ this.Runtime = (function() {
         img.src = data;
         return img.onload = (function(_this) {
           return function() {
-            _this.sprites[name].load(img, properties);
+            UpdateSprite(_this.sprites[name], img, properties);
             return _this.updateMaps();
           };
         })(this);
       } else {
-        this.sprites[name] = new Sprite(data, null, properties);
-        this.sprites[name].name = name;
-        return this.sprites[name].loaded = (function(_this) {
+        this.sprites[name] = LoadSprite(data, properties, (function(_this) {
           return function() {
             return _this.updateMaps();
           };
-        })(this);
+        })(this));
+        return this.sprites[name].name = name;
       }
     } else {
       if (this.sprites[name] != null) {
         img = new Image;
         img.crossOrigin = "Anonymous";
-        img.src = this.url + "sprites/" + name + (".png?v=" + version);
+        img.src = this.url + "sprites/" + slug + (".png?v=" + version);
         return img.onload = (function(_this) {
           return function() {
-            _this.sprites[name].load(img, properties);
+            UpdateSprite(_this.sprites[name], img, properties);
             return _this.updateMaps();
           };
         })(this);
       } else {
-        this.sprites[name] = new Sprite(this.url + "sprites/" + name + (".png?v=" + version), null, properties);
-        this.sprites[name].name = name;
-        return this.sprites[name].loaded = (function(_this) {
+        this.sprites[name] = LoadSprite(this.url + "sprites/" + slug + (".png?v=" + version), properties, (function(_this) {
           return function() {
             return _this.updateMaps();
           };
-        })(this);
+        })(this));
+        return this.sprites[name].name = name;
       }
     }
   };
 
   Runtime.prototype.updateMap = function(name, version, data) {
     var m, url;
+    name = name.replace(/-/g, "/");
     if (data != null) {
       m = this.maps[name];
       if (m != null) {
-        m.load(data, this.sprites);
+        UpdateMap(m, data);
         return m.needs_update = true;
       } else {
-        m = new MicroMap(1, 1, 1, 1, this.sprites);
-        m.load(data, this.sprites);
+        m = new MicroMap(1, 1, 1, 1);
+        UpdateMap(m, data);
         this.maps[name] = m;
         return this.maps[name].name = name;
       }
@@ -359,7 +411,7 @@ this.Runtime = (function() {
       if (m != null) {
         return m.loadFile(url);
       } else {
-        this.maps[name] = new MicroMap(url, 0, 0, 0, this.sprites);
+        this.maps[name] = LoadMap(url);
         return this.maps[name].name = name;
       }
     }
@@ -369,7 +421,7 @@ this.Runtime = (function() {
     var req, url;
     if (data != null) {
       this.sources[name] = data;
-      if (this.vm != null) {
+      if ((this.vm != null) && data !== this.update_memory[name]) {
         this.vm.clearWarnings();
       }
       return this.updateSource(name, data, true);
@@ -396,17 +448,29 @@ this.Runtime = (function() {
     return this.audio.cancelBeeps();
   };
 
+  Runtime.prototype.stepForward = function() {
+    if (this.stopped) {
+      this.updateCall();
+      this.drawCall();
+      if (this.watching_variables) {
+        return this.watchStep();
+      }
+    }
+  };
+
   Runtime.prototype.resume = function() {
-    this.stopped = false;
-    return requestAnimationFrame((function(_this) {
-      return function() {
-        return _this.timer();
-      };
-    })(this));
+    if (this.stopped) {
+      this.stopped = false;
+      return requestAnimationFrame((function(_this) {
+        return function() {
+          return _this.timer();
+        };
+      })(this));
+    }
   };
 
   Runtime.prototype.timer = function() {
-    var ds, dt, i, j, ref, time;
+    var ds, dt, fps, i, j, ref, time;
     if (this.stopped) {
       return;
     }
@@ -416,26 +480,45 @@ this.Runtime = (function() {
       };
     })(this));
     time = Date.now();
-    if (Math.abs(time - this.last_time) > 1000) {
+    if (Math.abs(time - this.last_time) > 160) {
       this.last_time = time - 16;
     }
     dt = time - this.last_time;
-    this.dt = this.dt * .99 + dt * .01;
+    this.dt = this.dt * .9 + dt * .1;
     this.last_time = time;
+    this.vm.context.global.system.fps = Math.round(fps = 1000 / this.dt);
     this.floating_frame += this.dt * 60 / 1000;
-    ds = Math.min(30, Math.round(this.floating_frame - this.current_frame));
+    ds = Math.min(10, Math.round(this.floating_frame - this.current_frame));
+    if ((ds === 0 || ds === 2) && Math.abs(fps - 60) < 2) {
+      ds = 1;
+      this.floating_frame = this.current_frame + 1;
+    }
     for (i = j = 1, ref = ds; j <= ref; i = j += 1) {
       this.updateCall();
     }
     this.current_frame += ds;
-    return this.drawCall();
+    this.drawCall();
+    if (ds > 0 && this.watching_variables) {
+      return this.watchStep();
+    }
   };
 
   Runtime.prototype.updateCall = function() {
     var err;
-    this.updateControls();
+    if (this.vm.runner.triggers_controls_update) {
+      if (this.vm.runner.updateControls == null) {
+        this.vm.runner.updateControls = (function(_this) {
+          return function() {
+            return _this.updateControls();
+          };
+        })(this);
+      }
+    } else {
+      this.updateControls();
+    }
     try {
       this.vm.call("update");
+      this.time_machine.step();
       this.reportWarnings();
       if (this.vm.error_info != null) {
         err = this.vm.error_info;
@@ -471,7 +554,7 @@ this.Runtime = (function() {
   };
 
   Runtime.prototype.reportWarnings = function() {
-    var key, ref, ref1, ref2, results, value;
+    var key, ref, ref1, ref2, ref3, value;
     if (this.vm != null) {
       ref = this.vm.context.warnings.invoking_non_function;
       for (key in ref) {
@@ -504,33 +587,44 @@ this.Runtime = (function() {
         }
       }
       ref2 = this.vm.context.warnings.assigning_field_to_undefined;
-      results = [];
       for (key in ref2) {
         value = ref2[key];
         if (!value.reported) {
           value.reported = true;
-          results.push(this.listener.reportError({
+          this.listener.reportError({
             error: "",
             type: "assigning_undefined",
             expression: value.expression,
             line: value.line,
             column: value.column,
             file: value.file
-          }));
-        } else {
-          results.push(void 0);
+          });
         }
       }
-      return results;
+      ref3 = this.vm.context.warnings.assigning_api_variable;
+      for (key in ref3) {
+        value = ref3[key];
+        if (!value.reported) {
+          value.reported = true;
+          this.listener.reportError({
+            error: "",
+            type: "assigning_api_variable",
+            expression: value.expression,
+            line: value.line,
+            column: value.column,
+            file: value.file
+          });
+        }
+      }
     }
   };
 
   Runtime.prototype.updateControls = function() {
-    var err, j, key, len, t, touches;
+    var err, j, key, len1, t, touches;
     touches = Object.keys(this.screen.touches);
-    this.touch.touching = touches.length > 0;
+    this.touch.touching = touches.length > 0 ? 1 : 0;
     this.touch.touches = [];
-    for (j = 0, len = touches.length; j < len; j++) {
+    for (j = 0, len1 = touches.length; j < len1; j++) {
       key = touches[j];
       t = this.screen.touches[key];
       this.touch.x = t.x;
@@ -553,6 +647,8 @@ this.Runtime = (function() {
     } else {
       this.mouse.release = 0;
     }
+    this.mouse.wheel = this.screen.wheel || 0;
+    this.screen.wheel = 0;
     if (this.touch.touching && !this.previous_touch) {
       this.previous_touch = true;
       this.touch.press = 1;
@@ -564,6 +660,16 @@ this.Runtime = (function() {
       this.touch.release = 1;
     } else {
       this.touch.release = 0;
+    }
+    this.vm.context.global.system.file.dropped = 0;
+    if (this.files_dropped != null) {
+      this.vm.context.global.system.file.dropped = this.files_dropped;
+      delete this.files_dropped;
+    }
+    this.vm.context.global.system.file.loaded = 0;
+    if (this.files_loaded != null) {
+      this.vm.context.global.system.file.loaded = this.files_loaded;
+      delete this.files_loaded;
     }
     this.gamepad.update();
     this.keyboard.update();
@@ -578,6 +684,514 @@ this.Runtime = (function() {
     return this.url + "assets/" + asset + ".glb";
   };
 
+  Runtime.prototype.watch = function(variables) {
+    this.watching = true;
+    this.watching_variables = variables;
+    this.exclusion_list = [this.vm.context.global.screen, this.vm.context.global.system, this.vm.context.global.keyboard, this.vm.context.global.audio, this.vm.context.global.gamepad, this.vm.context.global.touch, this.vm.context.global.mouse, this.vm.context.global.sprites, this.vm.context.global.maps, this.vm.context.global.sounds, this.vm.context.global.music, this.vm.context.global.assets, this.vm.context.global.asset_manager, this.vm.context.global.fonts, this.vm.context.global.storage];
+    if (this.vm.context.global.Function != null) {
+      this.exclusion_list.push(this.vm.context.global.Function);
+    }
+    if (this.vm.context.global.String != null) {
+      this.exclusion_list.push(this.vm.context.global.String);
+    }
+    if (this.vm.context.global.List != null) {
+      this.exclusion_list.push(this.vm.context.global.List);
+    }
+    if (this.vm.context.global.Number != null) {
+      this.exclusion_list.push(this.vm.context.global.Number);
+    }
+    if (this.vm.context.global.Object != null) {
+      this.exclusion_list.push(this.vm.context.global.Object);
+    }
+    if (this.vm.context.global.Image != null) {
+      this.exclusion_list.push(this.vm.context.global.Image);
+    }
+    if (this.vm.context.global.Sound != null) {
+      this.exclusion_list.push(this.vm.context.global.Sound);
+    }
+    if (this.vm.context.global.Sprite != null) {
+      this.exclusion_list.push(this.vm.context.global.Sprite);
+    }
+    if (this.vm.context.global.Map != null) {
+      this.exclusion_list.push(this.vm.context.global.Map);
+    }
+    if (this.vm.context.global.random != null) {
+      this.exclusion_list.push(this.vm.context.global.random);
+    }
+    if (this.vm.context.global.print != null) {
+      this.exclusion_list.push(this.vm.context.global.print);
+    }
+    return this.watchStep();
+  };
+
+  Runtime.prototype.stopWatching = function() {
+    return this.watching = false;
+  };
+
+  Runtime.prototype.watchStep = function(variables) {
+    var index, j, len1, res, v, value, vs;
+    if (variables == null) {
+      variables = this.watching_variables;
+    }
+    res = {};
+    for (j = 0, len1 = variables.length; j < len1; j++) {
+      v = variables[j];
+      if (v === "global") {
+        value = this.vm.context.global;
+      } else {
+        vs = v.split(".");
+        value = this.vm.context.global;
+        index = 0;
+        while (index < vs.length && (value != null)) {
+          value = value[vs[index++]];
+        }
+      }
+      if ((value != null) && this.exclusion_list.indexOf(value) < 0) {
+        res[v] = this.exploreValue(value, 1, 10);
+      }
+    }
+    return this.listener.postMessage({
+      name: "watch_update",
+      data: res
+    });
+  };
+
+  Runtime.prototype.exploreValue = function(value, depth, array_max) {
+    var i, j, key, len1, res, v;
+    if (depth == null) {
+      depth = 1;
+    }
+    if (array_max == null) {
+      array_max = 10;
+    }
+    if (value == null) {
+      return {
+        type: "number",
+        value: 0
+      };
+    }
+    if (typeof value === "function" || value instanceof Program.Function || (typeof Routine !== "undefined" && Routine !== null) && value instanceof Routine) {
+      return {
+        type: "function",
+        value: ""
+      };
+    } else if (typeof value === "object") {
+      if (Array.isArray(value)) {
+        if (depth === 0) {
+          return {
+            type: "list",
+            value: "",
+            length: value.length
+          };
+        }
+        res = [];
+        for (i = j = 0, len1 = value.length; j < len1; i = ++j) {
+          v = value[i];
+          if (i >= 100) {
+            break;
+          }
+          if (this.exclusion_list.indexOf(v) < 0) {
+            res[i] = this.exploreValue(v, depth - 1, array_max);
+          }
+        }
+        return res;
+      } else {
+        if (depth === 0) {
+          v = "";
+          if (value.classname) {
+            v = "class " + value.classname;
+          }
+          if ((value["class"] != null) && (value["class"].classname != null)) {
+            v = value["class"].classname;
+          }
+          return {
+            type: "object",
+            value: v
+          };
+        }
+        res = {};
+        for (key in value) {
+          v = value[key];
+          if (this.exclusion_list.indexOf(v) < 0) {
+            res[key] = this.exploreValue(v, depth - 1, array_max);
+          }
+        }
+        return res;
+      }
+    } else if (typeof value === "string") {
+      return {
+        type: "string",
+        value: value.length < 43 ? value : value.substring(0, 40) + "..."
+      };
+    } else if (typeof value === "number") {
+      return {
+        type: "number",
+        value: isFinite(value) ? value : 0
+      };
+    } else if (typeof value === "boolean") {
+      return {
+        type: "number",
+        value: value ? 1 : 0
+      };
+    } else {
+      return {
+        type: "unknown",
+        value: value
+      };
+    }
+  };
+
+  Runtime.prototype.exit = function() {
+    var err;
+    this.stop();
+    if (this.screen.clear != null) {
+      setTimeout(((function(_this) {
+        return function() {
+          return _this.screen.clear();
+        };
+      })(this)), 1);
+    }
+    try {
+      this.listener.exit();
+    } catch (error) {
+      err = error;
+    }
+    try {
+      if ((navigator.app != null) && (navigator.app.exitApp != null)) {
+        navigator.app.exitApp();
+      }
+    } catch (error) {
+      err = error;
+    }
+    try {
+      return window.close();
+    } catch (error) {
+      err = error;
+    }
+  };
+
+  Runtime.prototype.createDropFeature = function() {
+    document.addEventListener("dragenter", (function(_this) {
+      return function(event) {
+        return event.stopPropagation();
+      };
+    })(this));
+    document.addEventListener("dragleave", (function(_this) {
+      return function(event) {
+        return event.stopPropagation();
+      };
+    })(this));
+    document.addEventListener("dragover", (function(_this) {
+      return function(event) {
+        event.preventDefault();
+        if (player.runtime.screen.mouseMove != null) {
+          return player.runtime.screen.mouseMove(event);
+        }
+      };
+    })(this));
+    return document.addEventListener("drop", (function(_this) {
+      return function(event) {
+        var err, file, files, i, index, j, len1, list, processFile, ref, result;
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+          list = [];
+          files = [];
+          ref = event.dataTransfer.items;
+          for (j = 0, len1 = ref.length; j < len1; j++) {
+            i = ref[j];
+            if (i.kind === "file") {
+              file = i.getAsFile();
+              files.push(file);
+            }
+          }
+          result = [];
+          index = 0;
+          processFile = function() {
+            var f;
+            if (index < files.length) {
+              f = files[index++];
+              return loadFile(f, function(data) {
+                result.push({
+                  name: f.name,
+                  size: f.size,
+                  content: data,
+                  file_type: f.type
+                });
+                return processFile();
+              });
+            } else {
+              player.runtime.files_dropped = result;
+              if (typeof window.dropHandler === "function") {
+                return window.dropHandler(result);
+              }
+            }
+          };
+          return processFile();
+        } catch (error) {
+          err = error;
+          return console.error(err);
+        }
+      };
+    })(this));
+  };
+
   return Runtime;
 
 })();
+
+saveFile = function(data, name, type) {
+  var a, blob, url;
+  a = document.createElement("a");
+  document.body.appendChild(a);
+  a.style = "display: none";
+  blob = new Blob([data], {
+    type: type
+  });
+  url = window.URL.createObjectURL(blob);
+  a.href = url;
+  a.download = name;
+  a.click();
+  return window.URL.revokeObjectURL(url);
+};
+
+loadWaveFileLib = function(callback) {
+  var s;
+  if (typeof wavefile !== "undefined" && wavefile !== null) {
+    return callback();
+  } else {
+    s = document.createElement("script");
+    s.src = location.origin + "/lib/wavefile/wavefile.js";
+    document.head.appendChild(s);
+    return s.onload = function() {
+      return callback();
+    };
+  }
+};
+
+loadLameJSLib = function(callback) {
+  var s;
+  if (typeof lamejs !== "undefined" && lamejs !== null) {
+    return callback();
+  } else {
+    s = document.createElement("script");
+    s.src = location.origin + "/lib/lamejs/lame.min.js";
+    document.head.appendChild(s);
+    return s.onload = function() {
+      return callback();
+    };
+  }
+};
+
+writeProjectFile = function(name, data, thumb) {
+  return window.player.postMessage({
+    name: "write_project_file",
+    filename: name,
+    content: data,
+    thumbnail: thumb
+  });
+};
+
+arrayBufferToBase64 = function(buffer) {
+  var binary, bytes, i, j, len, ref;
+  binary = '';
+  bytes = new Uint8Array(buffer);
+  len = bytes.byteLength;
+  for (i = j = 0, ref = len - 1; j <= ref; i = j += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
+
+loadFile = function(file, callback) {
+  var fr;
+  switch (file.type) {
+    case "image/png":
+    case "image/jpeg":
+      fr = new FileReader;
+      fr.onload = function() {
+        var img;
+        img = new Image;
+        img.onload = function() {
+          var image;
+          image = new msImage(img);
+          return callback(image);
+        };
+        return img.src = fr.result;
+      };
+      return fr.readAsDataURL(file);
+    case "audio/wav":
+    case "audio/x-wav":
+    case "audio/mp3":
+      fr = new FileReader;
+      fr.onload = function() {
+        return player.runtime.audio.getContext().decodeAudioData(fr.result, function(buffer) {
+          return callback(new Sound(player.runtime.audio, buffer));
+        });
+      };
+      return fr.readAsArrayBuffer(file);
+    case "application/json":
+      fr = new FileReader;
+      fr.onload = function() {
+        var err, object;
+        object = fr.result;
+        try {
+          object = JSON.parse(fr.result);
+        } catch (error) {
+          err = error;
+        }
+        return callback(object);
+      };
+      return fr.readAsText(file);
+    default:
+      fr = new FileReader;
+      fr.onload = function() {
+        return callback(fr.result);
+      };
+      return fr.readAsText(file);
+  }
+};
+
+this.System = {
+  javascript: function(s) {
+    var err, f, res;
+    try {
+      f = eval("res = function() { " + s + " }");
+      res = f.call(player.runtime.vm.context.global);
+    } catch (error) {
+      err = error;
+      console.error(err);
+    }
+    if (res != null) {
+      return res;
+    } else {
+      return 0;
+    }
+  },
+  file: {
+    save: function(obj, name, format, options) {
+      var a, c;
+      if (obj instanceof MicroSound) {
+        return loadWaveFileLib(function() {
+          var buffer, ch, ch1, ch2, i, j, k, ref, ref1, wav;
+          wav = new wavefile.WaveFile;
+          ch1 = [];
+          for (i = j = 0, ref = obj.length - 1; j <= ref; i = j += 1) {
+            ch1[i] = Math.round(Math.min(1, Math.max(-1, obj.read(0, i))) * 32767);
+          }
+          if (obj.channels === 2) {
+            ch2 = [];
+            for (i = k = 0, ref1 = obj.length - 1; k <= ref1; i = k += 1) {
+              ch2[i] = Math.round(Math.min(1, Math.max(-1, obj.read(1, i))) * 32767);
+            }
+            ch = [ch1, ch2];
+          } else {
+            ch = [ch1];
+          }
+          wav.fromScratch(ch.length, obj.sampleRate, '16', ch);
+          buffer = wav.toBuffer();
+          if (typeof name !== "string") {
+            name = "sound.wav";
+          } else if (!name.endsWith(".wav")) {
+            name += ".wav";
+          }
+          return saveFile(buffer, name, "octet/stream");
+        });
+      } else if (obj instanceof msImage) {
+        c = obj.canvas;
+        if (typeof name !== "string") {
+          name = "image";
+        }
+        format = typeof format === "string" && format.toLowerCase() === "jpg" ? "jpg" : "png";
+        if (!name.endsWith("." + format)) {
+          name += "." + format;
+        }
+        a = document.createElement("a");
+        document.body.appendChild(a);
+        a.style = "display: none";
+        return c.toBlob(((function(_this) {
+          return function(blob) {
+            var url;
+            url = window.URL.createObjectURL(blob);
+            a.href = url;
+            a.download = name;
+            a.click();
+            return window.URL.revokeObjectURL(url);
+          };
+        })(this)), (format === "png" ? "image/png" : "image/jpeg"), options);
+      } else if (typeof obj === "object") {
+        obj = System.runtime.vm.storableObject(obj);
+        obj = JSON.stringify(obj, null, 2);
+        if (typeof name !== "string") {
+          name = "data";
+        }
+        if (!name.endsWith(".json")) {
+          name += ".json";
+        }
+        return saveFile(obj, name, "text/json");
+      } else if (typeof obj === "string") {
+        if (typeof name !== "string") {
+          name = "text";
+        }
+        if (!name.endsWith(".txt")) {
+          name += ".txt";
+        }
+        return saveFile(obj, name, "text/plain");
+      }
+    },
+    load: function(options, callback) {
+      var extensions, i, input, j, ref;
+      if (typeof options === "string" || Array.isArray(options)) {
+        extensions = options;
+      } else {
+        extensions = options.extensions || null;
+      }
+      input = document.createElement("input");
+      if (options.multiple) {
+        input.multiple = true;
+      }
+      input.type = "file";
+      if (typeof extensions === "string") {
+        input.accept = "." + extensions;
+      } else if (Array.isArray(extensions)) {
+        for (i = j = 0, ref = extensions.length - 1; 0 <= ref ? j <= ref : j >= ref; i = 0 <= ref ? ++j : --j) {
+          extensions[i] = "." + extensions[i];
+        }
+        input.accept = extensions.join(",");
+      }
+      input.addEventListener("change", (function(_this) {
+        return function(event) {
+          var files, index, processFile, result;
+          files = event.target.files;
+          result = [];
+          index = 0;
+          processFile = function() {
+            var f;
+            if (index < files.length) {
+              f = files[index++];
+              return loadFile(f, function(data) {
+                result.push({
+                  name: f.name,
+                  size: f.size,
+                  content: data,
+                  file_type: f.type
+                });
+                return processFile();
+              });
+            } else {
+              player.runtime.files_loaded = result;
+              if (typeof callback === "function") {
+                return callback(result);
+              }
+            }
+          };
+          return processFile();
+        };
+      })(this));
+      return input.click();
+    },
+    setDropHandler: function(handler) {
+      return window.dropHandler = handler;
+    }
+  }
+};

@@ -1,15 +1,16 @@
 doctype html
 html(lang=language)
   head
-    meta(name="description" content=translator.get("Learn programming, create video games - microStudio is a free game engine online."))
+    meta(name="description" content=description)
     meta(name="viewport" content="width=device-width, user-scalable=no, initial-scale=.6")
+    link(rel="alternate" hreflang="pt" href="https://microstudio.dev/ru/")
     link(rel="alternate" hreflang="pt" href="https://microstudio.dev/pt/")
     link(rel="alternate" hreflang="it" href="https://microstudio.dev/it/")
     link(rel="alternate" hreflang="de" href="https://microstudio.dev/de/")
     link(rel="alternate" hreflang="pl" href="https://microstudio.dev/pl/")
     link(rel="alternate" hreflang="fr" href="https://microstudio.dev/fr/")
     link(rel="alternate" hreflang="en" href="https://microstudio.dev")
-    title microStudio - #{translator.get("Learn programming, create games")}
+    title #{title}
 
     each css in css_files
       link(rel="stylesheet" type="text/css" href=css)
@@ -40,28 +41,30 @@ html(lang=language)
         "operatingSystem": "Any"
       }
 
-    meta(property="og:title" content="microStudio")
+    meta(property="og:title" content=title)
     meta(property="og:type" content="website")
     meta(property="og:url" content="https://microstudio.dev")
-    meta(property="og:image" content="https://microstudio.dev/img/microstudio.jpg")
-    meta(property="og:description" content="microStudio is a free game engine online. Learn, create and share with the community. Use the built-in sprite editor, map editor and code editor to create anything.")
+    meta(property="og:image" content=poster)
+    meta(property="og:description" content=long_description)
 
     meta(name="twitter:card" content="summary_large_image")
     meta(name="twitter:site" content="@microStudio")
-    meta(name="twitter:title" content="microStudio")
-    meta(name="twitter:description" content="microStudio is a free game engine online. Learn, create and share with the community. Use the built-in sprite editor, map editor and code editor to create anything.")
-    meta(name="twitter:image" content="https://microstudio.dev/img/microstudio.jpg")
+    meta(name="twitter:title" content=title)
+    meta(name="twitter:description" content=long_description)
+    meta(name="twitter:image" content=poster)
 
     script(src="/lib/jquery/jquery.js")
     script(src="/lib/jquery-ui/jquery-ui.min.js")
     script(src="/lib/ace/ace.js")
     script(src="/lib/mode-microscript.js")
+    script(src="/lib/mode-microscript2.js")
     script(src="/lib/ace/mode-markdown.js")
     script(src="/lib/ace/theme-tomorrow_night_bright.js")
 
     script(src="/lib/marked/marked.js")
     script(src="/lib/dompurify/purify.js")
-    
+    script(src="/lib/qrcode/qrcode.js")
+
     script.
       window.ms_languages = !{JSON.stringify(languages)};
       window.ms_standalone = !{standalone} ;
@@ -71,6 +74,8 @@ html(lang=language)
       script(src=js)
 
   body.notranslate(translate="no")
+    noscript
+      p #{translator.get("Your browser has JavaScript disabled. Please enable JavaScript in your browser preferences, in order to use microStudio.")}
     header
       div(id="create-account-button" title=translator.get("Create My Account"))
         <i class="login fa fa-user-plus"></i><span>#{translator.get("Create My Account")}</span>
@@ -83,11 +88,11 @@ html(lang=language)
           img(style="display: none;")
           i.fa.fa-user
           span#user-nick
-            
+
       div#header-progress-summary.hidden
         div#header-progress-level Level 0
         div#header-progress-xp 0
-          
+
       div#language-setting
         i.fas.fa-comment
         div.lang.notranslate(translate="no") #{language.toUpperCase()}
@@ -116,6 +121,11 @@ html(lang=language)
         div.language-choice#language-choice-pt(title="Português")
           i.fas.fa-comment
           div.notranslate(translate="no") PT
+
+        div.language-choice#language-choice-ru(title="русский")
+          i.fas.fa-comment
+          div.notranslate(translate="no") RU
+
 
       img.logo#logo(src="/img/microstudiologo.svg" alt="microStudio" title="microStudio")
 
@@ -162,8 +172,8 @@ html(lang=language)
         div.part
           div.center
             h2 #{translator.get("Get into programming")}
-            p #{translator.get("Write your game code in microScript, a simple language inspired by Lua.")}
-            p #{translator.get("The documentation is always there to help. Create cool demos in just a few lines of code.")}
+            p #{translator.get("Write your game code in microScript, a simple language inspired by Lua.")+" "+translator.get("The documentation is always there to help. Create cool demos in just a few lines of code.")}
+            p #{translator.get("microScript shines by its simplicity and interactivity. But you can also code in JavaScript, Python or Lua if you prefer.")}
           div.center
             img.screen(src="/img/codeeditor.jpg" alt="Code Editor")
 
@@ -223,6 +233,43 @@ html(lang=language)
             br
             span #{translator.get("Start creating!")}
 
+
+        div.part
+          h2 #{translator.get("Standalone, offline application")}
+          div.center
+            p #{translator.get("Would you like to work completely offline? Download the microStudio standalone app for Windows, Mac, Linux and Raspberry Pi:")}
+            p
+              a(href="https://microstudio.itch.io/microstudio") https://microstudio.itch.io/microstudio
+          div.center
+            img(src="/img/windows.svg" alt="Windows" style="box-shadow: none; width: 100px; margin: 20px 40px")
+            img(src="/img/macos.svg" alt="macOS" style="box-shadow: none; width: 100px; margin: 20px 40px")
+            br
+            img(src="/img/ubuntu.svg" alt="Linux" style="box-shadow: none; width: 100px; margin: 20px 40px")
+            img(src="/img/raspberry.svg" alt="Raspberry Pi OS" style="box-shadow: none; width: 100px; margin: 20px 40px")
+
+        div.part
+          h2 #{translator.get("microStudio is open source")}
+
+          div.center
+            i.fab.fa-github
+
+          div.center
+            p #{translator.get("microStudio is open source software, released under the MIT License:")}
+            p
+              a(href="https://github.com/pmgl/microstudio") https://github.com/pmgl/microstudio
+
+        div.part
+          h2 #{translator.get("Support me on Patreon")}
+
+          div.center
+            p #{translator.get("You like microStudio and would like to support me? Check my Patreon!")}
+            p
+              a(href="https://www.patreon.com/microstudiodev") https://www.patreon.com/microstudiodev
+
+          div.center
+            i.fab.fa-patreon(style="color:#f96854")
+
+
         div.footer
           p #{translator.get("Created in Strasbourg, France. See 'About' for more information")}
           p
@@ -240,6 +287,8 @@ html(lang=language)
             a.notranslate(id="switch-to-it" href="/it/" translate="no") microStudio in Italiano
             i.fa.fa-circle
             a.notranslate(id="switch-to-pt" href="/pt/" translate="no") microStudio em Português
+            i.fa.fa-circle
+            a.notranslate(id="switch-to-ru" href="/ru/" translate="no") microStudio на русском языке
 
       div.exploreview#explore-section
         div#explore-bar
@@ -252,11 +301,17 @@ html(lang=language)
               i.fas.fa-arrows-alt-v
               span #{translator.get("Hot")}
 
-            div#explore-tags
+            div#explore-type-button.all
+              i.fa
+              span #{translator.get("All")}
 
             div#explore-search
               input#explore-search-input(name="search")
               i.fa.fa-search
+
+        div#explore-tags-bar.collapsed
+          div#explore-tags
+          i.fa.fa-caret-right#explore-tags-collapse
 
         div#explore-contents
           div#explore-box-list
@@ -291,7 +346,7 @@ html(lang=language)
         div.projectview#projectview
           div.projectheader
             div.backtoprojects#backtoprojects <i class="fa fa-arrow-left"></i> #{translator.get("Back to Projects")}
-            img#project-icon
+            img.pixelated#project-icon
             span#project-name Project name
             i#save-status(class="fa fa-ellipsis-h")
             div#active-project-users
@@ -299,7 +354,7 @@ html(lang=language)
                 i(class="fa fa-user")
                 span username
 
-          div.sidemenu
+          div.sidemenu#sidemenu
             ul
               li(id="menuitem-code") <i class="fa fa-code"></i><br /> #{translator.get("Code")}
               li(id="menuitem-sprites") <i class="fa fa-image"></i><br /> #{translator.get("Sprites")}
@@ -308,9 +363,15 @@ html(lang=language)
               li(id="menuitem-sounds") <i class="fa fa-volume-up"></i><br /> #{translator.get("Sounds")}
               li(id="menuitem-music") <i class="fa fa-music"></i><br /> #{translator.get("Music")}
               li(id="menuitem-doc") <i class="fas fa-book"></i><br /> #{translator.get("Doc")}
-              // li(id="menuitem-server") <i class="fa fa-server"></i><br /> #{translator.get("Server")}
+              li(id="menuitem-sync") <i class="fas fa-sync"></i><br /> #{translator.get("Sync")}
               li(id="menuitem-options") <i class="fa fa-cogs"></i><br /> #{translator.get("Settings")}
               li(id="menuitem-publish") <i class="fa fa-upload"></i><br /> #{translator.get("Publish")}
+              li.menuitem-plugin(id="menuitem-plugin-gilles-pixelify")
+                img.pixelated(src="/gilles/platformerbasics/sprites/icon.png")
+                br
+                span Pixelify
+              li(id="menuitem-tabs" title=translator.get("Manage tabs and plugins"))
+                i.fas.fa-plus-circle
 
           div.section-container#section-container
             div.section#code-section
@@ -338,8 +399,8 @@ html(lang=language)
             div.section#doc-section
               include doc.pug
 
-            div.section#server-section
-              include server.pug
+            div.section.top-section-border.padding80#sync-section
+              include sync.pug
 
             div.section#settings-section.
               Settings section here
@@ -349,6 +410,10 @@ html(lang=language)
 
             div.section#publish-section
               include publish.pug
+
+            div.section#tabs-section
+              include projecttabs.pug
+
 
     div.overlay#login-overlay
       div#login-window
@@ -440,6 +505,49 @@ html(lang=language)
           br
           button#create-project-submit #{translator.get("Create Project")}
 
+          div#advanced-create-project-options-button
+            i.fa
+            span #{translator.get("Advanced")}
+
+          div#advanced-create-project-options
+            div.createprojectoption#create-project-option-type
+              h3 #{translator.get("Project Type")}
+              select#createprojectoption-type
+                option(value="app") #{translator.get("App (game, demo...)")}
+                option(value="library") #{translator.get("Library")}
+                option(value="plugin") #{translator.get("Plug-in")}
+                option(value="tutorial") #{translator.get("Tutorial")}
+
+            div.createprojectoption#create-project-option-language
+              h3 #{translator.get("Language support")}
+              select#createprojectoption-language
+                each val,key in language_engines
+                  option(value=key) #{translator.get(val.title)}
+
+            div.createprojectoption#create-project-option-graphics
+              h3 #{translator.get("Graphics library")}
+              select#createprojectoption-graphics
+                option(value="M1") #{translator.get("basic graphics API")}
+                option(value="M2D") #{translator.get("micro 2D - Experimental - Built on Pixi.js")}
+                option(value="M3D") #{translator.get("micro 3D - Experimental - Built on Babylon.js")}
+                option(value="PIXI") #{translator.get("Pixi.js - Experimental")}
+                option(value="BABYLON") #{translator.get("Babylon.js - Experimental")}
+
+            div.createprojectoption#create-project-option-libs
+              h3 #{translator.get("Additional tools and libraries")}
+              each val,key in optional_libs
+                input(type="checkbox" id="create-project-option-lib-"+key)
+                label(for="create-project-option-lib-"+key) #{translator.get(val.title)}
+                div.tip #{translator.get("Note: this integration is experimental")}
+                br
+
+    div.overlay#confirm-message-overlay
+      div.confirm-message-box
+        div#confirm-message-text Some text
+        div.confirm-message-buttons
+          div#confirm-message-cancel Cancel
+          div#confirm-message-ok OK
+
     div#notification-container
       div#notification-bubble
         i(class="fa fa-comment")
@@ -467,6 +575,8 @@ html(lang=language)
             i.fas.fa-play
           div#pause-button-win.selected(title="Pause execution")
             i.fas.fa-pause
+          div#step-forward-button-win(title="Run project" style="display: none")
+            i.fas.fa-step-forward
           div#reload-button-win.selected(title="Restart project")
             i.fa.fa-redo
 

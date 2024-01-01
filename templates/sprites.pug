@@ -1,11 +1,16 @@
 div.sprites-left
+  div.assets-bar#sprite-asset-bar
+    div.create-asset-button <i class="fa fa-plus-square"></i> #{translator.get("Sprite")}
+    i.fa.fa-folder-plus.create-folder-button(title=translator.get("New Folder"))
+
+  div.create-asset-button#create-sprite-button(style="display:none") <i class="fa fa-plus-square"></i> #{translator.get("Add Sprite")}
+
   div.assets-drop
     div <i class="fas fa-arrow-circle-down"></i>
     div #{translator.get("You can drop PNG or JPEG files here")}
 
-  div.create-sprite-button#create-sprite-button <i class="fa fa-plus-square"></i> <span>#{translator.get("Add Sprite")}</span>
-  div.spritelist#spritelist
-    div.sprite-list#sprite-list
+  div.assetlist#spritelist
+    div.asset-list#sprite-list
 
 div.sprites-splitbar
 
@@ -63,6 +68,16 @@ div.sprites-right
       div.button#add-frame-button(title=translator.get("Add new Frame"))
         i.fa.fa-plus-square
 
+  div#spriteeditor-bottombar
+    div.pick-color-button#sprite-background-color(title=translator.get("Background"))
+
+    div.asset-code-tip#sprite-code-tip
+      div
+        input(type="text" spellcheck="false" readonly=true)
+        i.fa.fa-copy(title=translator.get("Copy Code"))
+
+    div.editor-coordinates#sprite-coordinates
+
   div.spritebar#spritebar
     div.spritetools#spritetools
     div.spritetooloptions#spritetooloptions
@@ -87,6 +102,25 @@ div.sprites-right
         div.selection-hint#selection-hint-move <span>⇧</span> +<i class="fa fa-mouse-pointer"></i> #{translator.get("Move")}
         div.selection-hint#selection-hint-clone <span>Alt</span> +<i class="fa fa-mouse-pointer"></i> #{translator.get("Clone")}
         div.selection-operation#selection-operation-film <i class="fa fa-th"></i> <i class="fa fa-arrow-right"></i> <i class="fa fa-play"></i> <br /> #{translator.get("Strip to animation")}
+        div.selection-actions
+          div.spritetoolbutton.transform#selection-action-horizontal-flip
+            i.fa.fa-arrows-alt-h
+            br
+            span #{translator.get("Horizontal Flip")}
+          div.spritetoolbutton.transform#selection-action-vertical-flip
+            i.fa.fa-arrows-alt-v
+            br
+            span #{translator.get("Vertical Flip")}
+
+          div.spritetoolbutton.transform#selection-action-rotate-left
+            i.fas.fa-undo
+            br
+            span #{translator.get("Rotate Left")}
+
+          div.spritetoolbutton.transform#selection-action-rotate-right
+            i.fas.fa-redo
+            br
+            span #{translator.get("Rotate Right")}
 
     div.spritehelpers
       div.spritehelper#sprite-helper-tile

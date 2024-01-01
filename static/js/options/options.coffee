@@ -16,7 +16,20 @@ class @Options
 
     @selectInput "projectoption-orientation",(value)=>@orientationChanged(value)
     @selectInput "projectoption-aspect",(value)=>@aspectChanged(value)
+    @selectInput "projectoption-type",(value)=>@typeChanged(value)
     @selectInput "projectoption-graphics",(value)=>@graphicsChanged(value)
+    @selectInput "projectoption-language",(value)=>@languageChanged(value)
+
+    advanced = document.getElementById("advanced-project-options-button")
+    advanced.addEventListener "click",()=>
+      if advanced.classList.contains "open"
+        advanced.classList.remove "open"
+        document.getElementById("advanced-project-options").style.display = "none"
+        advanced.childNodes[1].innerText = @app.translator.get "Show advanced options"
+      else
+        advanced.classList.add "open"
+        document.getElementById("advanced-project-options").style.display = "block"
+        advanced.childNodes[1].innerText = @app.translator.get "Hide advanced options"
 
     @app.appui.setAction "add-project-user",()=>
       @addProjectUser()
@@ -41,6 +54,8 @@ class @Options
               @app.project.libs.splice index,1
               @optionChanged "libs",@app.project.libs
 
+    @library_tip = document.querySelector "#project-option-type .library"
+
   textInput:(element,action)->
     e = document.getElementById(element)
     e.addEventListener "input",(event)=>action(e.value)
@@ -50,7 +65,7 @@ class @Options
     e.addEventListener "change",(event)=>action(e.options[e.selectedIndex].value)
 
   projectOpened:()->
-    PixelatedImage.setURL document.getElementById("projectoptions-icon"),@app.project.getFullURL()+"icon.png",160
+    document.getElementById("projectoptions-icon").src = @app.project.getFullURL()+"icon.png"
     #document.getElementById("projectoptions-icon").setAttribute("src","#{@app.project.getFullURL()}icon.png")
     document.getElementById("projectoption-name").value = @app.project.title
     @project_slug_validator.set @app.project.slug
@@ -58,7 +73,11 @@ class @Options
     document.getElementById("projectoption-slugprefix").innerText = location.origin.replace(".dev",".io")+"/#{@app.project.owner.nick}/"
     document.getElementById("projectoption-orientation").value = @app.project.orientation
     document.getElementById("projectoption-aspect").value = @app.project.aspect
+    document.getElementById("projectoption-type").value = @app.project.type or "app"
     document.getElementById("projectoption-graphics").value = @app.project.graphics or "M1"
+    document.getElementById("projectoption-language").value = @app.project.language or "microscript_v1_i"
+
+    @library_tip.style.display = if @app.project.type == "library" then "block" else "none"
 
     list = document.querySelectorAll("#project-option-libs input")
     for input in list
@@ -73,7 +92,10 @@ class @Options
     @updateUserList()
     @app.project.addListener @
 
-    document.querySelector("#projectoptions-users").style.display = if @app.user.flags.guest then "none" else "block"
+    if window.ms_standalone or @app.user.flags.guest
+      document.querySelector("#projectoptions-users-content").style.display = "none"
+    else
+      document.querySelector("#projectoptions-users-content").style.display = "block"
 
   updateSecretCodeLine:()->
     @project_code_validator.set @app.project.code
@@ -140,15 +162,64 @@ class @Options
       value: value
     },(msg)=>
 
+  typeChanged:(value)->
+    @app.project.setType(value)
+    @library_tip.style.display = if value == "library" then "block" else "none"
+    @app.client.sendRequest {
+      name: "set_project_option"
+      project: @app.project.id
+      option: "type"
+      value: value
+    },(msg)=>
+
+    @app.tab_manager.resetPlugins()
+    @app.lib_manager.resetLibs()
+
   graphicsChanged:(value)->
     @app.project.setGraphics(value)
+    @app.debug.updateDebuggerVisibility()
     @app.client.sendRequest {
       name: "set_project_option"
       project: @app.project.id
       option: "graphics"
       value: value
     },(msg)=>
-    @app.appui.updateAllowedSections()
+
+  languageChanged:(value)->
+    if value != @app.project.language
+      if @app.project.source_list.length == 1 and @app.project.source_list[0].content.split("\n").length<20
+        if not @app.project.language.startsWith("microscript") or not value.startsWith("microscript")
+          ConfirmDialog.confirm @app.translator.get("Your current code will be overwritten. Do you wish to proceed?"),
+            @app.translator.get("OK"),
+            @app.translator.get("Cancel"),
+            (()=>
+              @app.project.setLanguage(value)
+              @app.editor.updateLanguage()
+              @app.debug.updateDebuggerVisibility()
+              if DEFAULT_CODE[value]?
+                @app.editor.setCode DEFAULT_CODE[value]
+              else
+                @app.editor.setCode DEFAULT_CODE["microscript"]
+              @app.editor.editorContentsChanged()
+              @setLanguage(value)
+            ),
+            (()=>
+              document.getElementById("projectoption-language").value = @app.project.language
+            )
+          return
+
+      @setLanguage(value)
+
+  setLanguage:(value)->
+    @app.project.setLanguage(value)
+    @app.editor.updateLanguage()
+    @app.debug.updateDebuggerVisibility()
+    @app.client.sendRequest {
+      name: "set_project_option"
+      project: @app.project.id
+      option: "language"
+      value: value
+    },(msg)=>
 
   setType:(type)->
     if type != @app.project.type
@@ -197,3 +268,46 @@ class @Options
 
         div.appendChild e
     return
+
+
+DEFAULT_CODE =
+  python: """
+def init():
+  pass
+
+def update():
+  pass
+
+def draw():
+  pass
+  """
+  javascript: """
+init = function() {
+}
+
+update = function() {
+}
+
+draw = function() {
+}
+  """
+  lua: """
+init = function()
+end
+
+update = function()
+end
+
+draw = function()
+end
+  """
+  microscript: """
+init = function()
+end
+
+update = function()
+end
+
+draw = function()
+end
+  """

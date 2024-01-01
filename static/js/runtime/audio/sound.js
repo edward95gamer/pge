@@ -3,17 +3,27 @@ this.Sound = (function() {
     var request;
     this.audio = audio;
     this.url = url;
-    request = new XMLHttpRequest();
-    request.open('GET', this.url, true);
-    request.responseType = 'arraybuffer';
-    request.onload = (function(_this) {
-      return function() {
-        return _this.audio.context.decodeAudioData(request.response, function(buffer) {
-          _this.buffer = buffer;
-        });
-      };
-    })(this);
-    request.send();
+    if (typeof MicroSound !== "undefined" && MicroSound !== null) {
+      this["class"] = MicroSound;
+    }
+    if (this.url instanceof AudioBuffer) {
+      this.buffer = this.url;
+      this.ready = 1;
+    } else {
+      this.ready = 0;
+      request = new XMLHttpRequest();
+      request.open('GET', this.url, true);
+      request.responseType = 'arraybuffer';
+      request.onload = (function(_this) {
+        return function() {
+          return _this.audio.context.decodeAudioData(request.response, function(buffer1) {
+            _this.buffer = buffer1;
+            return _this.ready = 1;
+          });
+        };
+      })(this);
+      request.send();
+    }
   }
 
   Sound.prototype.play = function(volume, pitch, pan, loopit) {
@@ -70,12 +80,15 @@ this.Sound = (function() {
       this.audio.addPlaying(playing);
     }
     res = {
-      stop: function() {
-        source.stop();
-        if (playing) {
-          return this.audio.removePlaying(playing);
-        }
-      },
+      stop: (function(_this) {
+        return function() {
+          source.stop();
+          if (playing) {
+            _this.audio.removePlaying(playing);
+          }
+          return 1;
+        };
+      })(this),
       setVolume: function(volume) {
         return gain.gain.value = Math.max(0, Math.min(1, volume));
       },
@@ -91,6 +104,62 @@ this.Sound = (function() {
       return res.finished = true;
     };
     return res;
+  };
+
+  Sound.createSoundClass = function(audiocore) {
+    return window.MicroSound = (function() {
+      _Class.classname = "Sound";
+
+      function _Class(channels, length, sampleRate) {
+        var buffer, ch1, ch2, snd;
+        if (sampleRate == null) {
+          sampleRate = 44100;
+        }
+        this["class"] = MicroSound;
+        channels = channels === 1 ? 1 : 2;
+        if (!(length > 1) || !(length < 44100 * 1000)) {
+          length = 44100;
+        }
+        if (!(sampleRate >= 8000) || !(sampleRate <= 96000)) {
+          sampleRate = 44100;
+        }
+        buffer = audiocore.context.createBuffer(channels, length, sampleRate);
+        snd = new Sound(audiocore, buffer);
+        this.channels = channels;
+        this.length = length;
+        this.sampleRate = sampleRate;
+        ch1 = buffer.getChannelData(0);
+        if (channels === 2) {
+          ch2 = buffer.getChannelData(1);
+        }
+        this.play = function(volume, pitch, pan, loopit) {
+          return snd.play(volume, pitch, pan, loopit);
+        };
+        this.write = function(channel, position, value) {
+          if (channel === 0) {
+            ch1 = buffer.getChannelData(0);
+            return ch1[position] = value;
+          } else if (channels === 2) {
+            ch2 = buffer.getChannelData(1);
+            return ch2[position] = value;
+          }
+        };
+        this.read = function(channel, position) {
+          if (channel === 0) {
+            ch1 = buffer.getChannelData(0);
+            return ch1[position];
+          } else if (channels === 2) {
+            ch2 = buffer.getChannelData(1);
+            return ch2[position];
+          } else {
+            return 0;
+          }
+        };
+      }
+
+      return _Class;
+
+    })();
   };
 
   return Sound;

@@ -8,6 +8,13 @@ window.addEventListener("load", function() {
 
 App = (function() {
   function App() {
+    this.languages = {
+      microscript2: LANGUAGE_MICROSCRIPT2,
+      microscript: LANGUAGE_MICROSCRIPT,
+      python: LANGUAGE_PYTHON,
+      javascript: LANGUAGE_JAVASCRIPT,
+      lua: LANGUAGE_LUA
+    };
     this.translator = new Translator(this);
     this.app_state = new AppState(this);
     this.appui = new AppUI(this);
@@ -25,7 +32,11 @@ App = (function() {
     this.sound_editor = new SoundEditor(this);
     this.music_editor = new MusicEditor(this);
     this.runwindow = new RunWindow(this);
+    this.debug = new Debug(this);
     this.options = new Options(this);
+    this.tab_manager = new TabManager(this);
+    this.lib_manager = new LibManager(this);
+    this.sync = new Sync(this);
     this.publish = new Publish(this);
     this.user_settings = new UserSettings(this);
     this.connected = false;
@@ -161,11 +172,21 @@ App = (function() {
     }
   };
 
-  App.prototype.createProject = function(title, slug, callback) {
+  App.prototype.createProject = function(title, slug, options, callback) {
+    if ((options != null) && typeof options === "function" && (callback == null)) {
+      callback = options;
+      options = {
+        language: "microscript_v2"
+      };
+    }
     return this.client.sendRequest({
       name: "create_project",
       title: title,
-      slug: slug
+      slug: slug,
+      type: options.type,
+      graphics: options.graphics,
+      language: options.language,
+      libs: options.libs
     }, (function(_this) {
       return function(msg) {
         switch (msg.name) {
@@ -227,7 +248,9 @@ App = (function() {
               _this.updateProjectList(msg.id);
               _this.appui.showNotification(_this.translator.get("Project imported successfully"));
               _this.appui.resetImportButton();
-              return _this.importing = false;
+              _this.importing = false;
+              _this.tab_manager.resetPlugins();
+              return _this.lib_manager.resetLibs();
           }
         }), function(progress) {
           return _this.appui.setImportProgress(progress);
@@ -286,11 +309,13 @@ App = (function() {
     this.map_editor.projectOpened();
     this.sound_editor.projectOpened();
     this.music_editor.projectOpened();
-    if (project.graphics === "M3D") {
-      this.assets_manager.projectOpened();
-    }
+    this.assets_manager.projectOpened();
     this.runwindow.projectOpened();
+    this.debug.projectOpened();
     this.options.projectOpened();
+    this.tab_manager.projectOpened();
+    this.lib_manager.projectOpened();
+    this.sync.projectOpened();
     this.publish.loadProject(this.project);
     this.project.load();
     if (!this.tutorial.shown) {
@@ -443,7 +468,9 @@ App = (function() {
       case "project_options_updated":
         if ((this.project != null) && msg.project === this.project.id) {
           this.project.optionsUpdated(msg);
-          return this.options.projectOpened();
+          this.options.projectOpened();
+          this.tab_manager.projectOpened();
+          return this.lib_manager.projectOpened();
         }
         break;
       case "user_stats":
@@ -581,3 +608,13 @@ App = (function() {
   return App;
 
 })();
+
+if (navigator.serviceWorker != null) {
+  navigator.serviceWorker.register("/app_sw.js", {
+    scope: location.pathname
+  }).then(function(reg) {
+    return console.log('Registration succeeded. Scope is' + reg.scope);
+  })["catch"](function(error) {
+    return console.log('Registration failed with' + error);
+  });
+}

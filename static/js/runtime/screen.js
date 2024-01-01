@@ -11,10 +11,15 @@ this.Screen = (function() {
       pressed: 0,
       left: 0,
       middle: 0,
-      right: 0
+      right: 0,
+      wheel: 0
     };
     this.translation_x = 0;
     this.translation_y = 0;
+    this.rotation = 0;
+    this.scale_x = 1;
+    this.scale_y = 1;
+    this.screen_transform = false;
     this.anchor_x = 0;
     this.anchor_y = 0;
     this.supersampling = this.previous_supersampling = 1;
@@ -78,6 +83,7 @@ this.Screen = (function() {
     this.width = this.canvas.width / ratio;
     this.height = this.canvas.height / ratio;
     this.alpha = 1;
+    this.pixelated = 1;
     this.line_width = 1;
     this.object_rotation = 0;
     this.object_scale_x = 1;
@@ -112,6 +118,9 @@ this.Screen = (function() {
       setAlpha: function(alpha) {
         return screen.setAlpha(alpha);
       },
+      setPixelated: function(pixelated) {
+        return screen.setPixelated(pixelated);
+      },
       setBlending: function(blending) {
         return screen.setBlending(blending);
       },
@@ -126,6 +135,12 @@ this.Screen = (function() {
       },
       setTranslation: function(tx, ty) {
         return screen.setTranslation(tx, ty);
+      },
+      setScale: function(x, y) {
+        return screen.setScale(x, y);
+      },
+      setRotation: function(rotation) {
+        return screen.setRotation(rotation);
       },
       setDrawAnchor: function(ax, ay) {
         return screen.setDrawAnchor(ax, ay);
@@ -157,7 +172,13 @@ this.Screen = (function() {
       drawSprite: function(sprite, x, y, w, h) {
         return screen.drawSprite(sprite, x, y, w, h);
       },
+      drawImage: function(sprite, x, y, w, h) {
+        return screen.drawSprite(sprite, x, y, w, h);
+      },
       drawSpritePart: function(sprite, sx, sy, sw, sh, x, y, w, h) {
+        return screen.drawSpritePart(sprite, sx, sy, sw, sh, x, y, w, h);
+      },
+      drawImagePart: function(sprite, sx, sy, sw, sh, x, y, w, h) {
         return screen.drawSpritePart(sprite, sx, sy, sw, sh, x, y, w, h);
       },
       drawMap: function(map, x, y, w, h) {
@@ -260,6 +281,10 @@ this.Screen = (function() {
     this.alpha = alpha1;
   };
 
+  Screen.prototype.setPixelated = function(pixelated1) {
+    this.pixelated = pixelated1;
+  };
+
   Screen.prototype.setBlending = function(blending) {
     blending = this.blending[blending || "normal"] || "source-over";
     return this.context.globalCompositeOperation = blending;
@@ -347,6 +372,37 @@ this.Screen = (function() {
   Screen.prototype.setTranslation = function(translation_x, translation_y) {
     this.translation_x = translation_x;
     this.translation_y = translation_y;
+    if (!isFinite(this.translation_x)) {
+      this.translation_x = 0;
+    }
+    if (!isFinite(this.translation_y)) {
+      this.translation_y = 0;
+    }
+    return this.updateScreenTransform();
+  };
+
+  Screen.prototype.setScale = function(scale_x, scale_y) {
+    this.scale_x = scale_x;
+    this.scale_y = scale_y;
+    if (!isFinite(this.scale_x) || this.scale_x === 0) {
+      this.scale_x = 1;
+    }
+    if (!isFinite(this.scale_y) || this.scale_y === 0) {
+      this.scale_y = 1;
+    }
+    return this.updateScreenTransform();
+  };
+
+  Screen.prototype.setRotation = function(rotation1) {
+    this.rotation = rotation1;
+    if (!isFinite(this.rotation)) {
+      this.rotation = 0;
+    }
+    return this.updateScreenTransform();
+  };
+
+  Screen.prototype.updateScreenTransform = function() {
+    return this.screen_transform = this.translation_x !== 0 || this.translation_y !== 0 || this.scale_x !== 1 || this.scale_y !== 1 || this.rotation !== 0;
   };
 
   Screen.prototype.setDrawAnchor = function(anchor_x, anchor_y) {
@@ -369,15 +425,21 @@ this.Screen = (function() {
     this.object_scale_y = object_scale_y != null ? object_scale_y : this.object_scale_x;
   };
 
-  Screen.prototype.initDrawOp = function(x, y) {
+  Screen.prototype.initDrawOp = function(x, y, object_transform) {
     var res;
+    if (object_transform == null) {
+      object_transform = true;
+    }
     res = false;
-    if (this.translation_x !== 0 || this.translation_y !== 0) {
+    if (this.screen_transform) {
       this.context.save();
       res = true;
-      this.context.translate(x + this.translation_x, y - this.translation_y);
+      this.context.translate(this.translation_x, -this.translation_y);
+      this.context.scale(this.scale_x, this.scale_y);
+      this.context.rotate(-this.rotation / 180 * Math.PI);
+      this.context.translate(x, y);
     }
-    if (this.object_rotation !== 0 || this.object_scale_x !== 1 || this.object_scale_y !== 1) {
+    if (object_transform && (this.object_rotation !== 0 || this.object_scale_x !== 1 || this.object_scale_y !== 1)) {
       if (!res) {
         this.context.save();
         res = true;
@@ -489,7 +551,7 @@ this.Screen = (function() {
     this.setColor(color);
     this.context.globalAlpha = this.alpha;
     this.context.lineWidth = this.line_width;
-    transform = this.initDrawOp(0, 0);
+    transform = this.initDrawOp(0, 0, false);
     this.context.beginPath();
     this.context.moveTo(x1, -y1);
     this.context.lineTo(x2, -y2);
@@ -516,7 +578,7 @@ this.Screen = (function() {
       return;
     }
     len = Math.floor(args.length / 2);
-    transform = this.initDrawOp(0, 0);
+    transform = this.initDrawOp(0, 0, false);
     this.context.beginPath();
     this.context.moveTo(args[0], -args[1]);
     for (i = j = 1, ref = len - 1; 1 <= ref ? j <= ref : j >= ref; i = 1 <= ref ? ++j : --j) {
@@ -545,7 +607,7 @@ this.Screen = (function() {
       return;
     }
     len = Math.floor(args.length / 2);
-    transform = this.initDrawOp(0, 0);
+    transform = this.initDrawOp(0, 0, false);
     this.context.beginPath();
     this.context.moveTo(args[0], -args[1]);
     for (i = j = 1, ref = len - 1; 1 <= ref ? j <= ref : j >= ref; i = 1 <= ref ? ++j : --j) {
@@ -575,7 +637,7 @@ this.Screen = (function() {
       return;
     }
     len = Math.floor(args.length / 2);
-    transform = this.initDrawOp(0, 0);
+    transform = this.initDrawOp(0, 0, false);
     this.context.beginPath();
     this.context.moveTo(args[0], -args[1]);
     for (i = j = 1, ref = len - 1; 1 <= ref ? j <= ref : j >= ref; i = 1 <= ref ? ++j : --j) {
@@ -641,6 +703,8 @@ this.Screen = (function() {
           frame = s[1] | 0;
         }
       }
+    } else if (sprite instanceof msImage) {
+      return sprite.canvas || sprite.image;
     }
     if ((sprite == null) || !sprite.ready) {
       return null;
@@ -668,11 +732,14 @@ this.Screen = (function() {
     if (canvas == null) {
       return;
     }
+    if (w == null) {
+      w = canvas.width;
+    }
     if (!h) {
       h = w / canvas.width * canvas.height;
     }
     this.context.globalAlpha = this.alpha;
-    this.context.imageSmoothingEnabled = false;
+    this.context.imageSmoothingEnabled = !this.pixelated;
     if (this.initDrawOp(x, -y)) {
       this.context.drawImage(canvas, -w / 2 - this.anchor_x * w / 2, -h / 2 + this.anchor_y * h / 2, w, h);
       return this.closeDrawOp(x, -y);
@@ -687,11 +754,14 @@ this.Screen = (function() {
     if (canvas == null) {
       return;
     }
+    if (w == null) {
+      w = sw;
+    }
     if (!h) {
       h = w / sw * sh;
     }
     this.context.globalAlpha = this.alpha;
-    this.context.imageSmoothingEnabled = false;
+    this.context.imageSmoothingEnabled = !this.pixelated;
     if (this.initDrawOp(x, -y)) {
       this.context.drawImage(canvas, sx, sy, sw, sh, -w / 2 - this.anchor_x * w / 2, -h / 2 + this.anchor_y * h / 2, w, h);
       return this.closeDrawOp(x, -y);
@@ -704,16 +774,16 @@ this.Screen = (function() {
     if (typeof map === "string") {
       map = this.runtime.maps[map];
     }
-    if ((map == null) || !map.ready || (map.canvas == null)) {
+    if ((map == null) || !map.ready) {
       return;
     }
     this.context.globalAlpha = this.alpha;
-    this.context.imageSmoothingEnabled = false;
+    this.context.imageSmoothingEnabled = !this.pixelated;
     if (this.initDrawOp(x, -y)) {
-      this.context.drawImage(map.getCanvas(), -w / 2 - this.anchor_x * w / 2, -h / 2 + this.anchor_y * h / 2, w, h);
+      map.draw(this.context, -w / 2 - this.anchor_x * w / 2, -h / 2 + this.anchor_y * h / 2, w, h);
       return this.closeDrawOp(x, -y);
     } else {
-      return this.context.drawImage(map.getCanvas(), x - w / 2 - this.anchor_x * w / 2, -y - h / 2 + this.anchor_y * h / 2, w, h);
+      return map.draw(this.context, x - w / 2 - this.anchor_x * w / 2, -y - h / 2 + this.anchor_y * h / 2, w, h);
     }
   };
 
@@ -791,12 +861,12 @@ this.Screen = (function() {
   Screen.prototype.startControl = function(element) {
     var backingStoreRatio, devicePixelRatio;
     this.element = element;
-    this.canvas.addEventListener("touchstart", (function(_this) {
+    document.addEventListener("touchstart", (function(_this) {
       return function(event) {
         return _this.touchStart(event);
       };
     })(this));
-    this.canvas.addEventListener("touchmove", (function(_this) {
+    document.addEventListener("touchmove", (function(_this) {
       return function(event) {
         return _this.touchMove(event);
       };
@@ -811,12 +881,12 @@ this.Screen = (function() {
         return _this.touchRelease(event);
       };
     })(this));
-    this.canvas.addEventListener("mousedown", (function(_this) {
+    document.addEventListener("mousedown", (function(_this) {
       return function(event) {
         return _this.mouseDown(event);
       };
     })(this));
-    this.canvas.addEventListener("mousemove", (function(_this) {
+    document.addEventListener("mousemove", (function(_this) {
       return function(event) {
         return _this.mouseMove(event);
       };
@@ -824,6 +894,16 @@ this.Screen = (function() {
     document.addEventListener("mouseup", (function(_this) {
       return function(event) {
         return _this.mouseUp(event);
+      };
+    })(this));
+    document.addEventListener("mousewheel", (function(_this) {
+      return function(event) {
+        return _this.mouseWheel(event);
+      };
+    })(this));
+    document.addEventListener("DOMMouseScroll", (function(_this) {
+      return function(event) {
+        return _this.mouseWheel(event);
       };
     })(this));
     devicePixelRatio = window.devicePixelRatio || 1;
@@ -952,6 +1032,18 @@ this.Screen = (function() {
     }
     this.mouse.pressed = Math.min(1, this.mouse.left + this.mouse.right + this.mouse.middle);
     return false;
+  };
+
+  Screen.prototype.mouseWheel = function(e) {
+    if (e.wheelDelta < 0 || e.detail > 0) {
+      return this.wheel = -1;
+    } else {
+      return this.wheel = 1;
+    }
+  };
+
+  Screen.prototype.takePicture = function(callback) {
+    return callback(this.canvas.toDataURL());
   };
 
   return Screen;

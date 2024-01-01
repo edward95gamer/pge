@@ -1,9 +1,23 @@
-class @Editor
+class @Editor extends Manager
   constructor:(@app)->
+    @language = @app.languages.microscript
+
+    @folder = "ms"
+    @item = "source"
+    @main_splitpanel = "code-editor"
+    @list_change_event = "sourcelist"
+    @get_item = "getSource"
+    @use_thumbnails = false
+    @extensions = ["ms"]
+    @update_list = "updateSourceList"
+    @file_icon = "fa fa-file"
+
+    @init()
+
     @editor = ace.edit "editor-view"
     @editor.$blockScrolling = Infinity
     @editor.setTheme("ace/theme/tomorrow_night_bright")
-    @editor.getSession().setMode("ace/mode/microscript")
+    @editor.getSession().setMode(@language.ace_mode)
     @editor.setFontSize("14px")
     @editor.getSession().setOptions
       tabSize: 2
@@ -29,10 +43,14 @@ class @Editor
 
     @editor.on "blur",()=>
       @app.runwindow.rulercanvas.hide()
+      document.getElementById("help-window").classList.add("disabled")
 
     @editor.on "focus",()=>
       @checkValueToolButtons()
       @cancelValueTool()
+      if @show_help
+        document.getElementById("help-window").classList.remove("disabled")
+        @liveHelp()
 
     @RULER_FUNCTIONS = ["fillRect","fillRound","fillRoundRect","drawRect","drawRound","drawRoundRect","drawSprite","drawMap","drawText","drawLine","drawPolygon","fillPolygon"]
 
@@ -59,14 +77,15 @@ class @Editor
       @checkValueToolButtons()
 
     @show_help = true
-    document.querySelector("#help-window").addEventListener "click",()=>
+    document.querySelector("#help-window-content").addEventListener "mousedown",(event)=>
+      event.stopPropagation()
       @show_help = not @show_help
       if not @show_help
         document.querySelector("#help-window").classList.add "disabled"
-        document.querySelector("#help-window .content").style.display = "none"
       else
         document.querySelector("#help-window").classList.remove "disabled"
         @liveHelp()
+        @editor.focus()
 
     document.addEventListener "keydown",(event)=>
       try
@@ -95,13 +114,6 @@ class @Editor
           @showValueTool()
       return
 
-    document.getElementById("source-list-header").addEventListener "click",(event)=>
-      @toggleFileList()
-
-    @app.appui.setAction "create-source-button",()=>
-      @createSource()
-      @toggleFileList(false)
-
     document.querySelector("#code-search").addEventListener "click",(event)=>
       @editor.execCommand("find")
 
@@ -127,30 +139,41 @@ class @Editor
       @editor.setOptions({ fontSize: @font_size })
       localStorage.setItem("code_editor_font_size",@font_size)
 
-  toggleFileList:(close)->
-    view = document.getElementById("editor-view")
-    list = document.getElementById("source-list-panel")
-    if not close?
-      close = list.clientWidth>100
+    @lib_manager_button = document.querySelector "#manage-libs-button"
+    @lib_manager = document.querySelector ".lib-manager-container"
+    @editor_view = document.querySelector "#editor-view"
 
-    if close
-      list.style.width = "40px"
-      view.style.left = "40px"
-      document.querySelector(".source-list-header i").classList.remove("fa-chevron-circle-left")
-      document.querySelector(".source-list-header i").classList.add("fa-chevron-circle-right")
-      document.getElementById("code-toolbar").style["padding-left"] = "50px"
-      setTimeout (()=>@editor.resize()),600
-    else
-      list.style.width = "180px"
-      view.style.left = "180px"
-      document.querySelector(".source-list-header i").classList.add("fa-chevron-circle-left")
-      document.querySelector(".source-list-header i").classList.remove("fa-chevron-circle-right")
-      document.getElementById("code-toolbar").style["padding-left"] = "190px"
-      setTimeout (()=>@editor.resize()),600
+    @lib_manager_button.addEventListener "click",()=>
+      @toggleLibManager()
+
+  updateLanguage:()->
+    if @app.project
+      switch @app.project.language
+        when "python" then @language = @app.languages.python
+        when "javascript" then @language = @app.languages.javascript
+        when "lua" then @language = @app.languages.lua
+        when "microscript_v2" then @language = @app.languages.microscript2
+        else
+          @language = @app.languages.microscript
+
+    @editor.getSession().setMode(@language.ace_mode)
+    @updateSourceLanguage()
+
+  checkEmbeddedJavaScript:(src)->
+    if @app.project.language == "microscript_v2"
+      if /^\s*\/\/\s*javascript\s*\n/.test(src)
+        if @language != @app.languages.javascript
+          @language = @app.languages.javascript
+          @editor.getSession().setMode(@language.ace_mode)
+      else
+        if @language != @app.languages.microscript2
+          @language = @app.languages.microscript2
+          @editor.getSession().setMode(@language.ace_mode)
 
   editorContentsChanged:()->
     return if @ignore_changes
     src = @editor.getValue()
+    @checkEmbeddedJavaScript src
     @update_time = Date.now()
     @save_time = Date.now()
     @app.project.addPendingChange @
@@ -165,9 +188,12 @@ class @Editor
   check:()->
     if @update_time>0 and (@value_tool or Date.now()>@update_time+@update_delay)
       @update_time = 0
-      parser = new Parser(@editor.getValue())
-      p = parser.parse()
-      if not parser.error_info?
+      if @language.parser
+        parser = new @language.parser(@editor.getValue())
+        p = parser.parse()
+        if not parser.error_info?
+          @app.runwindow.updateCode(@selected_source+".ms",@getCode())
+      else
         @app.runwindow.updateCode(@selected_source+".ms",@getCode())
 
   getCurrentLine:()->
@@ -219,15 +245,18 @@ class @Editor
     @editor.setValue(code,-1)
     @editor.getSession().setUndoManager(new ace.UndoManager())
     @ignore_changes = false
+    @updateCurrentFileLock()
+    @checkEmbeddedJavaScript code
 
-  addDocButton:(pointer)->
+  addDocButton:(pointer,section)->
     content = document.querySelector("#help-window .content")
     button = document.createElement "div"
     button.classList.add "see-doc-button"
     button.innerHTML = "<i class='fa fa-book-open'></i> "+@app.translator.get("View doc")
-    button.addEventListener "click",(event)=>
+    button.addEventListener "mousedown",(event)=>
       event.stopPropagation()
       @app.appui.setMainSection "help",true
+      @app.documentation.setSection section or "API"
       element = document.getElementById pointer
       if element?
         element.scrollIntoView()
@@ -237,7 +266,7 @@ class @Editor
 
   liveHelp:()->
     return if not @show_help
-    line = @getCurrentLine()
+    line = @getCurrentLine().replace(":",".")
     column = @editor.getSelectionRange().start.column
     suggest = @app.documentation.findSuggestMatch(line,column)
     content = document.querySelector("#help-window .content")
@@ -246,28 +275,30 @@ class @Editor
       help = @app.documentation.findHelpMatch(line)
       if help.length>0
         content.innerHTML = DOMPurify.sanitize marked help[0].value
-        content.style.display = "block"
         document.querySelector("#help-window").classList.add("showing")
-        @addDocButton(help[0].pointer)
+        @addDocButton(help[0].pointer,help[0].section)
       else
         content.innerHTML = ""
-        content.style.display = "none"
+        c = document.querySelector "#help-window-content"
+        c.classList.remove "displaycontent"
+        return
     else if suggest.length == 1
       content.innerHTML = DOMPurify.sanitize marked suggest[0].value
-      content.style.display = "block"
       document.querySelector("#help-window").classList.add("showing")
-      @addDocButton(suggest[0].pointer)
+      @addDocButton(suggest[0].pointer,suggest[0].section)
     else
       md = ""
       for res in suggest
         md += res.ref + "\n\n"
       content.innerHTML = DOMPurify.sanitize marked md
-      content.style.display = "block"
       document.querySelector("#help-window").classList.add("showing")
-      @addDocButton(suggest[0].pointer)
+      @addDocButton(suggest[0].pointer,suggest[0].section)
+
+    c = document.querySelector "#help-window-content"
+    c.classList.add "displaycontent"
 
   tokenizeLine:(line)->
-    tokenizer = new Tokenizer(line)
+    tokenizer = new Tokenizer(line.replace(":","."))
     index = 0
     list = []
     try
@@ -356,7 +387,6 @@ class @Editor
           #@editor.selection.setRange(new ace.Range(row,start_token.start,row,token.end),true)
           @editor.blur()
           @value_tool = new ValueTool @,pos.left,pos.top,value,(value)=>
-            console.info value
             @editor.session.replace({ start: {row: row, column: 0},end: {row: row, column: Number.MAX_VALUE}}, start+value+end)
             @editor.selection.setRange(new ace.Range(row,start_token.start,row,start_token.start+(""+value).length),true)
             @drawHelper(row,column)
@@ -381,31 +411,53 @@ class @Editor
       @app.runwindow.rulercanvas.hide()
       @editor.focus()
 
+  evalArg:(arg,callback)->
+    if document.getElementById("runiframe")?
+      @app.runwindow.runCommand arg,callback
+    else
+      callback(if isFinite(arg) then arg*1 else 0)
+
   drawHelper:(row,column)->
     try
       res = @analyzeLine(row,column)
       if res?
-        if res.function.indexOf("Polygon")>0 or res.function == "drawLine"
-          args = []
-          funk = (i)=>
-            @app.runwindow.runCommand res.args[i],(v)=>
-              args[i] = v
-              if i<res.args.length-1
-                funk(i+1)
-              else
-                @app.runwindow.rulercanvas.showPolygon(args,res.arg)
-          funk(0)
+        if @app.project.language.startsWith("microscript")
+          if res.function.indexOf("Polygon") > 0 or res.function == "drawLine"
+            args = []
+            funk = (i)=>
+              @evalArg res.args[i],(v)=>
+                args[i] = v
+                if i < res.args.length-1
+                  funk(i+1)
+                else
+                  @app.runwindow.rulercanvas.showPolygon(args,res.arg)
+            funk(0)
+          else
+            @evalArg res.args[0],(v1)=>
+              @evalArg res.args[1],(v2)=>
+                @evalArg res.args[2],(v3)=>
+                  @evalArg res.args[3],(v4)=>
+                    switch res.arg
+                      when 0 then @app.runwindow.rulercanvas.showX(v1,v2,v3,v4)
+                      when 1 then @app.runwindow.rulercanvas.showY(v1,v2,v3,v4)
+                      when 2 then @app.runwindow.rulercanvas.showW(v1,v2,v3,v4)
+                      when 3 then @app.runwindow.rulercanvas.showH(v1,v2,v3,v4)
+                      else @app.runwindow.rulercanvas.showBox(v1,v2,v3,v4)
         else
-          @app.runwindow.runCommand res.args[0],(v1)=>
-            @app.runwindow.runCommand res.args[1],(v2)=>
-              @app.runwindow.runCommand res.args[2],(v3)=>
-                @app.runwindow.runCommand res.args[3],(v4)=>
-                  switch res.arg
-                    when 0 then @app.runwindow.rulercanvas.showX(v1,v2,v3,v4)
-                    when 1 then @app.runwindow.rulercanvas.showY(v1,v2,v3,v4)
-                    when 2 then @app.runwindow.rulercanvas.showW(v1,v2,v3,v4)
-                    when 3 then @app.runwindow.rulercanvas.showH(v1,v2,v3,v4)
-                    else @app.runwindow.rulercanvas.showBox(v1,v2,v3,v4)
+          if res.function.indexOf("Polygon")>0 or res.function == "drawLine"
+            args = res.args
+            @app.runwindow.rulercanvas.showPolygon(args,res.arg)
+          else
+            args = res.args
+            for i in [0..args.length-1] by 1
+              args[i] = args[i]|0
+
+            switch res.arg
+              when 0 then @app.runwindow.rulercanvas.showX(args[0],args[1],args[2],args[3])
+              when 1 then @app.runwindow.rulercanvas.showY(args[0],args[1],args[2],args[3])
+              when 2 then @app.runwindow.rulercanvas.showW(args[0],args[1],args[2],args[3])
+              when 3 then @app.runwindow.rulercanvas.showH(args[0],args[1],args[2],args[3])
+              else @app.runwindow.rulercanvas.showBox(args[0],args[1],args[2],args[3])
       else
         @app.runwindow.rulercanvas.hide()
 
@@ -419,7 +471,7 @@ class @Editor
       column = range.start.column
     line = @editor.session.getLine(row)
 
-    parser = new Parser(line+" ")
+    parser = new Parser(line.replace(":",".")+" ")
     p = parser.parse()
 
     if parser.last_function_call?
@@ -460,7 +512,22 @@ class @Editor
 
     null
 
+  updateSourceLanguage:()->
+    lang = @app.project.language.split("_")[0]
+    element = document.querySelector("#source-asset-bar .language")
+    element.innerText = lang
+    element.className = ""
+    element.classList.add(lang)
+    element.classList.add("language")
+
+    # document.getElementById("code-toolbar").innerHTML += "<span class='language #{lang}'>#{lang}</span>"
+
+  setSelectedItem:(name)->
+    @setSelectedSource name
+    super(name)
+
   setSelectedSource:(name)->
+    @toggleLibManager false
     @checkSave(true)
     if @selected_source?
       @sessions[@selected_source] =
@@ -469,23 +536,15 @@ class @Editor
     different = name != @selected_source
 
     @selected_source = name
-    list = document.getElementById("source-list").childNodes
 
     if @selected_source?
-      document.getElementById("code-toolbar").innerHTML = "<i class='fa fa-file-code'></i> "+@selected_source
-      for e in list
-        if e.getAttribute("id") == "source-list-item-#{name}"
-          e.classList.add("selected")
-        else
-          e.classList.remove("selected")
-    else
-      for e in list
-        e.classList.remove("selected")
+      @updateSourceLanguage()
 
     if @selected_source?
       source = @app.project.getSource(@selected_source)
       @setCode(source.content)
       @updateCurrentFileLock()
+
       @updateAnnotations()
       if @sessions[@selected_source] and different
         @editor.selection.setRange(@sessions[@selected_source].range)
@@ -495,17 +554,19 @@ class @Editor
       @setCode("")
 
   projectOpened:()->
+    super()
     @sessions = {}
     @app.project.addListener @
     @app.runwindow.resetButtons()
     @app.runwindow.windowResized()
-    @setSelectedSource null
+    @setSelectedItem null
     @updateRunLink()
+    @updateLanguage()
+    @update()
 
   projectUpdate:(change)->
-    if change == "sourcelist"
-      @rebuildSourceList()
-    else if change instanceof ProjectSource
+    super(change)
+    if change instanceof ProjectSource
       if @selected_source?
         if change == @app.project.getSource(@selected_source)
           @setCode(change.content)
@@ -524,150 +585,89 @@ class @Editor
         @editor.session.setAnnotations source.annotations or []
 
   updateCurrentFileLock:()->
-    if @selected_source?
-      @editor.setReadOnly @app.project.isLocked("ms/#{@selected_source}.ms")
-
     lock = document.getElementById("editor-locked")
-    if @selected_source? and @app.project.isLocked("ms/#{@selected_source}.ms")
-      user = @app.project.isLocked("ms/#{@selected_source}.ms").user
-      lock.style = "display: block; background: #{@app.appui.createFriendColor(user)}"
-      lock.innerHTML = "<i class='fa fa-user'></i> Locked by #{user}"
+
+    if @selected_source?
+      if @app.project.isLocked("ms/#{@selected_source}.ms")
+        @editor.setReadOnly true
+        user = @app.project.isLocked("ms/#{@selected_source}.ms").user
+        @showLock "<i class='fa fa-user'></i> Locked by #{user}",@app.appui.createFriendColor(user)
+      else
+        source = @app.project.getSource(@selected_source)
+        if source? and not source.fetched
+          @editor.setReadOnly true
+          @showLock """<i class="fas fa-spinner fa-spin"></i> """+@app.translator.get("Loading..."),"hsl(200,50%,50%)"
+        else
+          @hideLock()
+          @editor.setReadOnly false
     else
-      lock.style = "display: none"
+      @hideLock()
+      @editor.setReadOnly true
 
-  rebuildSourceList:()->
-    list = document.getElementById "source-list"
-    list.innerHTML = ""
+  showLock:(html,color)->
+    lock = document.getElementById("editor-locked")
+    @lock_shown = true
+    lock.style = "display: block; background: #{color}; opacity: 1"
+    lock.innerHTML = html
+    document.getElementById("editor-view").style.opacity = .5
 
-    for s in @app.project.source_list
-      element = @createSourceBox s
-      list.appendChild element
+  hideLock:()->
+    lock = document.getElementById("editor-locked")
+    @lock_shown = false
+    lock.style.opacity = 0
+    document.getElementById("editor-view").style.opacity = 1
+    setTimeout (()=>
+        if not @lock_shown
+          lock.style.display = "none"
+      ),1000
 
+
+  selectedItemRenamed:()->
+    @selected_source = @selected_item
+
+
+  rebuildList:()->
+    super()
     if not @selected_source? or not @app.project.getSource(@selected_source)?
       if @app.project.source_list.length>0
-        @setSelectedSource @app.project.source_list[0].name
+        @setSelectedItem @app.project.source_list[0].name
 
-    @updateActiveUsers()
+  fileDropped:(file,folder)->
+    console.info "processing #{file.name}"
+    console.info "folder: "+folder
+    reader = new FileReader()
+    reader.addEventListener "load",()=>
+      console.info "file read, size = "+ reader.result.length
+      return if reader.result.length>1000000
 
-    return
+      name = file.name.split(".")[0]
+      name = RegexLib.fixFilename name
 
-  updateActiveUsers:()->
-    list = document.getElementById("source-list").childNodes
-    for e in list
-      file = e.id.split("-")[3]
-      lock = @app.project.isLocked("ms/#{file}.ms")
-      if lock? and Date.now()<lock.time
-        e.querySelector(".active-user").style = "display: block; background: #{@app.appui.createFriendColor(lock.user)};"
-      else
-        e.querySelector(".active-user").style = "display: none;"
-    return
+      console.info(reader.result)
+      @createAsset folder,name,reader.result
 
-  createSourceBox:(source)->
+    reader.readAsText(file)
 
-    #  div.source-list-item.selected(title="main")
-    #    div.source-tools
-    #      i(class="fa fa-edit" title=translator.get("Rename file"))
-    #      i(class="fa fa-trash" title=translator.get("Delete this file"))
-    #    i(class="fa fa-file")
-    #    span main
-
-    element = document.createElement "div"
-    element.classList.add "source-list-item"
-    element.setAttribute "id","source-list-item-#{source.name}"
-    element.title = source.name
-    element.addEventListener "click",()=>
-      @setSelectedSource source.name
-
-    if source.name == @selected_source
-      element.classList.add "selected"
-
-    tools = document.createElement "div"
-    tools.classList.add "source-tools"
-    element.appendChild tools
-
-    i = document.createElement "i"
-    i.classList.add "fa"
-    i.classList.add "fa-file-code"
-    element.appendChild i
-
-    span = document.createElement "div"
-    span.classList.add "filename"
-    span.innerText = source.name
-    #span.contentEditable = true
-    element.appendChild span
-
-    input = document.createElement "input"
-
-    span.addEventListener "dblclick",()=>
-      return if @app.project.isLocked("ms/#{source.name}.ms")
-      @app.project.lockFile "ms/#{source.name}.ms"
-      span.parentNode.replaceChild input,span
-      input.value = source.name
-      input.focus()
-
-    input.addEventListener "blur",()=>
-      input.parentNode.replaceChild span,input
-      value = RegexLib.fixFilename(input.value)
-      if value != source.name
-        if RegexLib.filename.test(value)
-          if not @app.project.getSource(value)?
-            if @selected_source == source.name
-              @app.project.lockFile "ms/#{value}.ms"
-              @selected_source = value
-              old = source.name
-              @saveCode ()=>
-                @app.client.sendRequest {
-                  name: "delete_project_file"
-                  project: @app.project.id
-                  file: "ms/#{old}.ms"
-                },(msg)=>
-                  @app.project.updateSourceList()
-                  #callback() if callback?
-
-    input.addEventListener "keydown",(event)=>
-      @app.project.lockFile "ms/#{source.name}.ms"
-      if event.key == "Enter"
-        event.preventDefault()
-        input.blur()
-        false
-      else
-        true
-
-    #edit = document.createElement "i"
-    #edit.classList.add("fa")
-    #edit.classList.add("fa-edit")
-    #edit.title = @app.translator.get("Rename file")
-    #tools.appendChild edit
-    #edit.addEventListener "click",()=>
-    #  console.info "edit #{source.name}"
-
-    trash = document.createElement "i"
-    trash.classList.add("fa")
-    trash.classList.add("fa-trash")
-    trash.title = @app.translator.get("Delete file")
-    tools.appendChild trash
-    trash.addEventListener "click",()=>
-      if confirm "Really delete #{source.name}?"
-        @app.client.sendRequest {
-          name: "delete_project_file"
-          project: @app.project.id
-          file: "ms/#{source.name}.ms"
-        },(msg)=>
-          @app.project.updateSourceList()
-
-    activeuser = document.createElement "i"
-    activeuser.classList.add "active-user"
-    activeuser.classList.add "fa"
-    activeuser.classList.add "fa-user"
-    element.appendChild activeuser
-    element
-
-  createSource:()->
+  createAsset:(folder,name="source",content="")->
     @checkSave(true)
-    source = @app.project.createSource()
-    @rebuildSourceList()
-    @setSelectedSource source.name
-    @saveCode()
+
+    if folder?
+      name = folder.getFullDashPath()+"-#{name}"
+      folder.setOpen true
+
+    source = @app.project.createSource(name)
+    source.content = content
+    name = source.name
+    @app.client.sendRequest {
+      name: "write_project_file"
+      project: @app.project.id
+      file: "ms/#{name}.ms"
+      properties: {}
+      content: content
+    },(msg)=>
+      console.info msg
+      @app.project.updateSourceList()
+      @setSelectedItem name
 
   updateRunLink:()->
     element = document.getElementById("run-link")
@@ -684,3 +684,21 @@ class @Editor
 
       iframe = document.querySelector("#device iframe")
       if iframe? then iframe.src = url
+
+      qrcode = QRCode.toDataURL url,{margin:0},(err,url)=>
+        if not err? and url?
+          img = new Image
+          img.src = url
+          document.getElementById("qrcode-button").innerHTML = ""
+          document.getElementById("qrcode-button").appendChild img
+
+
+  toggleLibManager:(view = @editor_view.style.display != "none")->
+    if view
+      @lib_manager.style.display = "block"
+      @editor_view.style.display = "none"
+      @lib_manager_button.classList.add "selected"
+    else
+      @lib_manager.style.display = "none"
+      @editor_view.style.display = "block"
+      @lib_manager_button.classList.remove "selected"

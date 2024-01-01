@@ -7,6 +7,14 @@ class @RunWindow
     @app.appui.setAction "pause-button-win",()=> @pause()
     @app.appui.setAction "reload-button-win",()=> @reload()
     @app.appui.setAction "detach-button",()=> @detach()
+    @app.appui.setAction "qrcode-button",()=> @showQRCode()
+    @app.appui.setAction "take-picture-button",()=> @takePicture()
+
+    @app.appui.setAction "step-forward-button",()=> @stepForward()
+    @app.appui.setAction "step-forward-button-win",()=> @stepForward()
+
+    if window.ms_standalone
+      document.getElementById("qrcode-button").style.display = "none"
 
     @app.appui.setAction "clear-button",()=> @clear()
     @app.appui.setAction "console-options-button",()=> @toggleConsoleOptions()
@@ -18,8 +26,10 @@ class @RunWindow
 
     @terminal = new Terminal @
 
-    window.onmessage = (msg)=>
-      @messageReceived msg.data
+    window.addEventListener "message", (msg)=>
+      iframe = document.getElementById("runiframe")
+      if iframe? and msg.source == iframe.contentWindow
+        @messageReceived msg.data
 
     @command_table = {}
     @command_id = 0
@@ -29,6 +39,9 @@ class @RunWindow
 
     @initWarnings()
 
+    @message_listeners = {}
+    @listeners = []
+    @project_access = new ProjectAccess @app,null,@
 
   initWarnings:()->
     document.getElementById("console-options-warning-undefined").addEventListener "change",()=>
@@ -43,11 +56,6 @@ class @RunWindow
       @warning_assign = document.getElementById("console-options-warning-assign").checked
       localStorage.setItem "console_warning_assign", @warning_assign
 
-    document.getElementById("console-options-transpiler").addEventListener "change",()=>
-      @transpiler = document.getElementById("console-options-transpiler").checked
-      if @local_vm
-        @local_vm.transpiler = @transpiler
-
     @warning_undefined = localStorage.getItem("console_warning_undefined") == "true" or false
     @warning_nonfunction = localStorage.getItem("console_warning_nonfunction") != "false"
     @warning_assign = localStorage.getItem("console_warning_assign") != "false"
@@ -55,8 +63,6 @@ class @RunWindow
     document.getElementById("console-options-warning-undefined").checked = @warning_undefined
     document.getElementById("console-options-warning-nonfunction").checked = @warning_nonfunction
     document.getElementById("console-options-warning-assign").checked = @warning_assign
-    document.getElementById("console-options-transpiler").checked = false
-
 
   detach:()->
     if @detached
@@ -101,26 +107,18 @@ class @RunWindow
   run:()->
     src = @app.editor.editor.getValue()
 
-    resource =
-      images: []
-
-    for image in @app.project.sprite_list
-      resource.images.push image.file
-    #if @runtime?
-    #  @runtime.stop()
-    #@runtime = new Runtime(location.origin+"/#{@app.appui.nick}/#{@app.appui.project.slug}/",src,resource)
-
     device = document.getElementById("device")
     code = if @app.project.public then "" else "#{@app.project.code}/"
     url = "#{location.origin.replace(".dev",".io")}/#{@app.project.owner.nick}/#{@app.project.slug}/#{code}"
 
-    if @transpiler then url += "#transpiler"
     @app.project.savePendingChanges ()=>
-      device.innerHTML = "<iframe id='runiframe' allow='autoplay;gamepad' src='#{url}'></iframe>"
+      device.innerHTML = "<iframe id='runiframe' allow='autoplay;gamepad' src='#{url}?debug'></iframe>"
       #document.getElementById("runiframe").focus()
       @windowResized()
+      document.getElementById("take-picture-button").style.display = "inline-block"
 
   reload:()->
+    @terminal.clear()
     @run()
     document.getElementById("run-button").classList.add("selected")
     document.getElementById("pause-button").classList.remove("selected")
@@ -128,6 +126,10 @@ class @RunWindow
     document.getElementById("run-button-win").classList.add("selected")
     document.getElementById("pause-button-win").classList.remove("selected")
     document.getElementById("reload-button-win").classList.remove("selected")
+
+    document.getElementById("step-forward-button").style.display = "none"
+    document.getElementById("step-forward-button-win").style.display = "none"
+    @propagate "reload"
 
   play:()->
     if document.getElementById("runiframe")?
@@ -141,6 +143,11 @@ class @RunWindow
       document.getElementById("pause-button-win").classList.remove("selected")
       document.getElementById("reload-button-win").classList.remove("selected")
 
+      document.getElementById("step-forward-button").style.display = "none"
+      document.getElementById("step-forward-button-win").style.display = "none"
+
+      @propagate "play"
+
   pause:()->
     e = document.getElementById("runiframe")
     if e?
@@ -153,6 +160,19 @@ class @RunWindow
     document.getElementById("run-button-win").classList.remove("selected")
     document.getElementById("pause-button-win").classList.add("selected")
     document.getElementById("reload-button-win").classList.remove("selected")
+
+    document.getElementById("step-forward-button").style.display = "inline-block"
+    document.getElementById("step-forward-button-win").style.display = "inline-block"
+
+    @propagate "pause"
+
+  isPaused:()->
+    document.getElementById("pause-button").classList.contains("selected") or document.getElementById("pause-button-win").classList.contains("selected")
+
+
+  stepForward:()->
+    @postMessage
+      name: "step_forward"
 
   resume:()->
     e = document.getElementById("runiframe")
@@ -168,6 +188,11 @@ class @RunWindow
     document.getElementById("pause-button-win").classList.remove("selected")
     document.getElementById("reload-button-win").classList.remove("selected")
 
+    document.getElementById("step-forward-button").style.display = "none"
+    document.getElementById("step-forward-button-win").style.display = "none"
+
+    @propagate "resume"
+
   resetButtons:()->
     document.getElementById("run-button").classList.remove("selected")
     document.getElementById("pause-button").classList.add("selected")
@@ -176,18 +201,37 @@ class @RunWindow
     document.getElementById("pause-button-win").classList.add("selected")
     document.getElementById("reload-button-win").classList.add("selected")
 
+    document.getElementById("step-forward-button").style.display = "none"
+    document.getElementById("step-forward-button-win").style.display = "none"
+
   clear:()->
     @terminal.clear()
 
   toggleConsoleOptions:()->
-    div = document.getElementById("runtime-splitbar")
+    div = document.getElementById("console-options")
     if div.getBoundingClientRect().height<= 41
-      div.style.height = "180px"
+      div.style.height = "115px"
+      document.getElementById("terminal-view").style.top = "155px"
     else
-      div.style.height = "40px"
+      div.style.height = "0px"
+      document.getElementById("terminal-view").style.top = "40px"
     setTimeout (()=>@app.appui.runtime_splitbar.update()),600
 
   updateCode:(file,src)->
+    if @error_check?
+      clearTimeout @error_check
+
+    @error_buffer = []
+    @error_check = setTimeout (()=>
+      @error_check = null
+      if @terminal.error_lines > 0
+        @terminal.clear()
+        
+      for err in @error_buffer
+        @logError err
+
+    ),3000
+
     src = @app.editor.editor.getValue()
     iframe = document.getElementById("runiframe")
     if iframe?
@@ -242,8 +286,8 @@ class @RunWindow
       "1x1": 1/1
     }[@app.project.aspect]
 
-    if not ratio? and @app.project.orientation in ["portrait","landscape"]
-      ratio = 16/9
+    #if not ratio? and @app.project.orientation in ["portrait","landscape"]
+    #  ratio = 16/9
 
     if ratio?
       switch @app.project.orientation
@@ -271,13 +315,17 @@ class @RunWindow
       h = ch
 
     if c?
-      c.style["margin-top"] = Math.round((ch-h)/2)+"px"
-      c.style.width = Math.round(w)+"px"
-      c.style.height = Math.round(h)+"px"
+      c.style["margin-top"] = "0px" #{}Math.round((ch-h)/2)+"px"
+      c.style.width = Math.round(cw)+"px"
+      c.style.height = Math.round(ch)+"px"
 
     @rulercanvas.resize Math.round(w),Math.round(h),Math.round((ch-h)/2)
 
   logError:(err)->
+    if @error_check?
+      @error_buffer.push err
+      return
+
     error = err.error
     switch err.type
       when "non_function"
@@ -292,10 +340,16 @@ class @RunWindow
         return if not @warning_assign
         error = @app.translator.get("Warning: %EXP% is not defined, will be initialized to an empty object").replace("%EXP%",err.expression)
         @annotateWarning(error,err)
+      when "assigning_api_variable"
+        error = @app.translator.get("Warning: overwriting global API variable '%EXP%'").replace("%EXP%",err.expression)
+        @annotateWarning(error,err)
 
     if err.line?
       if err.file
-        text = @app.translator.get("%ERROR%, in file %FILE% at line %LINE%, column %COLUMN%")
+        text = @app.translator.get("%ERROR%, in file \"%FILE%\" at line %LINE%")
+        if err.column
+          text += ", column %COLUMN%"
+
         @terminal.error text.replace("%ERROR%",error).replace("%FILE%",err.file).replace("%LINE%",err.line).replace("%COLUMN%",err.column)
       else
         @terminal.error error
@@ -303,15 +357,17 @@ class @RunWindow
       @terminal.error "#{error}"
 
   annotateWarning:(warning,info)->
-    if @app.editor.selected_source == info.file
+#    if @app.editor.selected_source == info.file
       source = @app.project.getSource(info.file)
       if source?
-        source.annotations = [{
+        if not source.annotations?
+          source.annotations = []
+        source.annotations.push
           row: info.line-1
           column: info.column-1
           type: "warning"
           text: warning
-        }]
+
         @app.project.notifyListeners "annotations"
 
   messageReceived:(msg)->
@@ -337,7 +393,7 @@ class @RunWindow
           source = @app.project.getSource(msg.file)
           if source?
             if source.annotations? and source.annotations.length>0
-              @terminal.clear()
+              # @terminal.clear()
               source.annotations = []
               @app.project.notifyListeners "annotations"
         when "log"
@@ -356,31 +412,45 @@ class @RunWindow
           if e?
             e.contentWindow.focus()
 
+        when "picture_taken"
+          @showPicture(msg.data)
+
+        when "code_paused"
+          @pause()
+
+        when "exit"
+          @exit()
+
+        when "started"
+          @propagate "started"
+
+          if @pending_command?
+            iframe = document.getElementById("runiframe")
+            if iframe?
+              @command_table[@command_id] = @pending_command.output_callback if @pending_command.output_callback?
+              iframe.contentWindow.postMessage(JSON.stringify(
+                name: "command"
+                line: @pending_command.command
+                id: if @pending_command.output_callback? then @command_id++ else undefined
+              ),"*")
+            @pending_command = null
+
+        when "time_machine"
+          @app.debug.time_machine.messageReceived msg
+
+        else
+          if msg.name? and @message_listeners[msg.name]?
+            @message_listeners[msg.name](msg)
+          else
+            @project_access.messageReceived msg
+
     catch err
 
   runCommand:(command,output_callback)->
     @nesting = 0
     return if command.trim().length==0
-    iframe = document.getElementById("runiframe")
-    if iframe?
-      @command_table[@command_id] = output_callback if output_callback?
-      iframe.contentWindow.postMessage(JSON.stringify(
-        name: "command"
-        line: command
-        id: if output_callback? then @command_id++ else undefined
-      ),"*")
-    else
-      if not @local_vm?
-        meta =
-          print: (text)=>
-            if typeof text == "object"
-              text = Program.toString(text)
-            @terminal.echo(text)
-            return
 
-        global = {}
-        @local_vm = new MicroVM(meta,global,null,@transpiler)
-
+    if @app.project? and @app.project.language.startsWith "microscript"
       if @multiline?
         @multiline += "\n"+command
         command = @multiline
@@ -394,54 +464,25 @@ class @RunWindow
         else
           @multiline = null
           @logError parser.error_info
+        return
       else
         @nesting = 0
         @multiline = null
-        @local_vm.clearWarnings()
-        res = @local_vm.run(parser.program)
-        @reportWarnings()
-        if output_callback?
-          output_callback(res)
-        else if @local_vm.error_info
-          @logError(@local_vm.error_info)
-        else
-          if not command.trim().startsWith("print") and not parser.program.isAssignment()
-            @local_vm.context.meta.print(res)
 
-  reportWarnings:()->
-    if @local_vm?
-      for key,value of @local_vm.context.warnings.invoking_non_function
-        if not value.reported
-          value.reported = true
-          @logError
-            error: ""
-            type: "non_function"
-            expression: value.expression
-            line: value.line
-            column: value.column
-            file: value.file
+    iframe = document.getElementById("runiframe")
+    if iframe?
+      @command_table[@command_id] = output_callback if output_callback?
+      iframe.contentWindow.postMessage(JSON.stringify(
+        name: "command"
+        line: command
+        id: if output_callback? then @command_id++ else undefined
+      ),"*")
+    else
+      @pending_command =
+        command: command
+        output_callback: output_callback
 
-      for key,value of @local_vm.context.warnings.using_undefined_variable
-        if not value.reported
-          value.reported = true
-          @logError
-            error: ""
-            type: "undefined_variable"
-            expression: value.expression
-            line: value.line
-            column: value.column
-            file: value.file
-
-      for key,value of @local_vm.context.warnings.assigning_field_to_undefined
-        if not value.reported
-          value.reported = true
-          @logError
-            error: ""
-            type: "assigning_undefined"
-            expression: value.expression
-            line: value.line
-            column: value.column
-            file: value.file
+      @play()
 
   projectOpened:()->
     iframe = document.getElementById("runiframe")
@@ -451,3 +492,166 @@ class @RunWindow
 
   projectClosed:()->
     @floating_window.close()
+    iframe = document.getElementById("runiframe")
+    if iframe?
+      iframe.parentElement.removeChild iframe
+    document.getElementById("take-picture-button").style.display = "none"
+    @hideAll()
+
+  hideQRCode:()->
+    if @qrcode?
+      document.body.removeChild @qrcode
+      @qrcode = null
+
+  showQRCode:()->
+    if @app.project?
+      if @qrcode?
+        @hideQRCode()
+      else
+        url = location.origin.replace(".dev",".io")+"/"
+        url += @app.project.owner.nick+"/"
+        url += @app.project.slug+"/"
+        if not @app.project.public
+          url += @app.project.code + "/"
+
+        qrcode = QRCode.toDataURL url,{margin:2,scale:8},(err,url)=>
+          if not err? and url?
+            img = new Image
+            img.src = url
+            img.onload = ()=>
+              b = document.getElementById("qrcode-button").getBoundingClientRect()
+              img.style.position = "absolute"
+              img.style.top = "#{b.y+b.height+20}px"
+              img.style.left = "#{Math.min(b.x+b.width/2-132,window.innerWidth-img.width-10)}px"
+
+              @qrcode = img
+              @qrcode.addEventListener "click",()=>@showQRCode()
+              document.body.appendChild @qrcode
+
+  takePicture:()->
+    iframe = document.getElementById("runiframe")
+    if iframe?
+      iframe.contentWindow.postMessage(JSON.stringify(
+        name: "take_picture"
+      ),"*")
+
+
+
+  hidePicture:()->
+    if @picture?
+      document.body.removeChild @picture
+      @picture = null
+
+  showPicture:(data)->
+    @hidePicture()
+
+    @picture = div = document.createElement "div"
+    div.classList.add "show-picture"
+    div.style.position = "absolute"
+    b = document.getElementById("take-picture-button").getBoundingClientRect()
+    div.style.top = "#{b.y+b.height+20}px"
+    div.style.left = "#{Math.min(b.x+b.width/2-180,window.innerWidth-360-10)}px"
+    document.body.appendChild div
+
+    img = new Image
+    img.src = data
+    img.style.width = "320px"
+    div.appendChild img
+    div.appendChild document.createElement "br"
+
+    save_button = document.createElement "div"
+    save_button.innerText = @app.translator.get "Save"
+    save_button.classList.add "save"
+    save_button.addEventListener "click",()=>
+      @savePicture data,save_button
+    div.appendChild save_button
+    div.appendChild document.createElement "br"
+
+    set_button = document.createElement "div"
+    set_button.innerText = @app.translator.get "Set as project poster image"
+    set_button.addEventListener "click",()=>
+      @setAsPoster data,set_button
+    div.appendChild set_button
+    div.appendChild document.createElement "br"
+
+    button = document.createElement "div"
+    button.innerText = @app.translator.get "Close"
+    button.classList.add "close"
+    button.addEventListener "click",()=>
+      @hidePicture()
+    div.appendChild button
+
+  savePicture:(data,button)->
+    link = document.createElement("a")
+    link.setAttribute("href", data);
+    link.setAttribute("download", "#{@app.project.slug}.png")
+    link.click()
+    button.style.display = "none"
+
+  setAsPoster:(data,button)->
+    button.style.display = "none"
+    img = new Image
+    img.src = data
+    img.onload = ()=>
+      canvas = document.createElement "canvas"
+      iw = img.width
+      ih = img.height
+      if iw<ih
+        h = Math.min(360,ih)
+        r = h/ih*1.2
+        canvas.width = w = h/9*16
+        canvas.height = h
+        canvas.getContext("2d").fillStyle = "#000"
+        canvas.getContext("2d").fillRect(0,0,canvas.width,canvas.height)
+        canvas.getContext("2d").drawImage img,w/2-r*img.width/2,h/2-r*img.height/2,img.width*r,img.height*r
+      else
+        w = Math.min(640,iw,ih/9*16)
+        h = w/16*9
+        r = Math.max(w/img.width,h/img.height)
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext("2d").drawImage img,w/2-r*img.width/2,h/2-r*img.height/2,img.width*r,img.height*r
+
+      data = canvas.toDataURL().split(",")[1]
+      poster = @app.project.getSprite "poster"
+      @app.client.sendRequest {
+        name: "write_project_file"
+        project: @app.project.id
+        file: "sprites/poster.png"
+        properties:
+          frames: 1
+          fps: 5
+        content: data
+      },(msg)=>
+        @app.project.updateSpriteList()
+        if poster?
+          poster.reload()
+
+  hideAll:()->
+    @hideQRCode()
+    @hidePicture()
+
+  exit:()->
+    @projectClosed()
+    document.getElementById("run-button").classList.remove("selected")
+    document.getElementById("pause-button").classList.remove("selected")
+    document.getElementById("reload-button").classList.remove("selected")
+    document.getElementById("run-button-win").classList.remove("selected")
+    document.getElementById("pause-button-win").classList.remove("selected")
+    document.getElementById("reload-button-win").classList.remove("selected")
+    @propagate "exit"
+
+  postMessage:(data)->
+    iframe = document.getElementById("runiframe")
+    if iframe?
+      iframe.contentWindow.postMessage JSON.stringify(data),"*"
+
+  addMessageListener:(name,callback)->
+    @message_listeners[name] = callback
+
+  addListener:(callback)->
+    @listeners.push(callback)
+
+  propagate:(event)->
+    for l in @listeners
+      l(event)

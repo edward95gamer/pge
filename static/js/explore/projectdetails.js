@@ -2,7 +2,7 @@ this.ProjectDetails = (function() {
   function ProjectDetails(app) {
     var fn, j, len, ref, s;
     this.app = app;
-    this.menu = ["code", "sprites", "sounds", "music", "doc"];
+    this.menu = ["code", "sprites", "sounds", "music", "assets", "doc"];
     ref = this.menu;
     fn = (function(_this) {
       return function(s) {
@@ -59,6 +59,45 @@ this.ProjectDetails = (function() {
         });
       };
     })(this));
+    document.getElementById("project-contents-sprite-import").addEventListener("click", (function(_this) {
+      return function() {
+        var base, count, data, name;
+        if (_this.app.project == null) {
+          return;
+        }
+        if (_this.selected_sprite == null) {
+          return;
+        }
+        name = _this.selected_sprite.name;
+        if (name == null) {
+          return;
+        }
+        if (_this.imported_sprites[name]) {
+          return;
+        }
+        _this.imported_sprites[name] = true;
+        document.getElementById("project-contents-sprite-import").style.display = "none";
+        count = 1;
+        base = name;
+        while (_this.app.project.getSprite(name) != null) {
+          count += 1;
+          name = base + count;
+        }
+        data = _this.selected_sprite.saveData().split(",")[1];
+        return _this.app.client.sendRequest({
+          name: "write_project_file",
+          project: _this.app.project.id,
+          file: "sprites/" + name + ".png",
+          properties: {
+            frames: _this.selected_sprite.frames.length,
+            fps: _this.selected_sprite.fps
+          },
+          content: data
+        }, function(msg) {
+          return _this.app.project.updateSpriteList();
+        });
+      };
+    })(this));
     document.querySelector("#project-contents-doc-import").addEventListener("click", (function(_this) {
       return function() {
         var value;
@@ -111,9 +150,9 @@ this.ProjectDetails = (function() {
     })(this));
   }
 
-  ProjectDetails.prototype.set = function(project) {
-    var a, j, len, ref, section, t;
-    this.project = project;
+  ProjectDetails.prototype.set = function(project1) {
+    var a, j, len, ref, ref1, section, t;
+    this.project = project1;
     this.splitbar.update();
     this.sources = [];
     this.sprites = [];
@@ -121,6 +160,7 @@ this.ProjectDetails = (function() {
     this.music = [];
     this.maps = [];
     this.imported_sources = {};
+    this.imported_sprites = {};
     this.imported_doc = false;
     document.querySelector("#project-contents-doc-import").classList.remove("done");
     document.querySelector("#project-contents-doc-import").style.display = this.app.project != null ? "block" : "none";
@@ -132,6 +172,7 @@ this.ProjectDetails = (function() {
     document.querySelector("#project-contents-view .sprite-list").innerHTML = "";
     document.querySelector("#project-contents-view .sound-list").innerHTML = "";
     document.querySelector("#project-contents-view .music-list").innerHTML = "";
+    document.querySelector("#project-contents-view .asset-list").innerHTML = "";
     document.querySelector("#project-contents-view .doc-render").innerHTML = "";
     section = "code";
     ref = this.project.tags;
@@ -143,7 +184,7 @@ this.ProjectDetails = (function() {
         section = "doc";
       }
     }
-    if (this.project.type === "tutorial") {
+    if ((ref1 = this.project.type) === "tutorial" || ref1 === "library") {
       section = "doc";
     }
     this.setSection(section);
@@ -183,6 +224,15 @@ this.ProjectDetails = (function() {
     }, (function(_this) {
       return function(msg) {
         return _this.setMusicList(msg.files);
+      };
+    })(this));
+    this.app.client.sendRequest({
+      name: "list_public_project_files",
+      project: this.project.id,
+      folder: "assets"
+    }, (function(_this) {
+      return function(msg) {
+        return _this.setAssetList(msg.files);
       };
     })(this));
     this.app.client.sendRequest({
@@ -276,14 +326,12 @@ this.ProjectDetails = (function() {
   };
 
   ProjectDetails.prototype.setSelectedSource = function(file) {
-    var key;
+    var source;
     this.selected_source = file;
-    for (key in this.sources) {
-      if (key === file) {
-        document.getElementById("project-contents-view-source-" + key).classList.add("selected");
-      } else {
-        document.getElementById("project-contents-view-source-" + key).classList.remove("selected");
-      }
+    this.source_folder.setSelectedItem(file);
+    source = this.project_sources[file];
+    if ((source != null) && (source.parent != null)) {
+      source.parent.setOpen(true);
     }
     this.editor.setValue(this.sources[file], -1);
     if (this.app.project == null) {
@@ -303,268 +351,181 @@ this.ProjectDetails = (function() {
   };
 
   ProjectDetails.prototype.setSourceList = function(files) {
-    var f, j, len;
+    var f, folder, j, len, manager, project, s, table, view;
+    table = {};
+    manager = {
+      folder: "ms",
+      item: "source",
+      openItem: (function(_this) {
+        return function(item) {
+          return _this.setSelectedSource(item);
+        };
+      })(this)
+    };
+    this.project_sources = {};
+    project = JSON.parse(JSON.stringify(this.project));
+    project.app = this.app;
+    project.notifyListeners = (function(_this) {
+      return function(source) {
+        _this.sources[source.name] = source.content;
+        if (_this.selected_source == null) {
+          return _this.setSelectedSource(source.name);
+        }
+      };
+    })(this);
+    project.getFullURL = function() {
+      var url;
+      return url = location.origin + ("/" + project.owner + "/" + project.slug + "/");
+    };
+    folder = new ProjectFolder(null, "source");
     for (j = 0, len = files.length; j < len; j++) {
       f = files[j];
-      this.createSourceEntry(f.file);
+      s = new ExploreProjectSource(project, f.file);
+      this.project_sources[s.name] = s;
+      folder.push(s);
+      table[s.name] = s;
     }
-  };
-
-  ProjectDetails.prototype.createSpriteBox = function(file, prefs) {
-    var button, clicked, div, i, img, span;
-    div = document.createElement("div");
-    div.classList.add("sprite");
-    img = this.createSpriteThumb(new Sprite(location.origin + ("/" + this.project.owner + "/" + this.project.slug + "/" + file), null, prefs));
-    div.appendChild(img);
-    if (this.app.project != null) {
-      button = document.createElement("div");
-      i = document.createElement("i");
-      i.classList.add("fa");
-      i.classList.add("fa-download");
-      button.appendChild(i);
-      span = document.createElement("span");
-      span.innerText = this.app.translator.get("Import to project") + (" " + this.app.project.title);
-      button.appendChild(span);
-      clicked = false;
-      button.addEventListener("click", (function(_this) {
-        return function() {
-          var source;
-          if (clicked) {
-            return;
-          }
-          clicked = true;
-          source = new Image;
-          source.crossOrigin = "Anonymous";
-          source.src = location.origin + ("/" + _this.project.owner + "/" + _this.project.slug + "/" + file);
-          return source.onload = function() {
-            var canvas, count, name;
-            canvas = document.createElement("canvas");
-            canvas.width = source.width;
-            canvas.height = source.height;
-            canvas.getContext("2d").drawImage(source, 0, 0);
-            name = file.split(".")[0];
-            count = 1;
-            while (_this.app.project.getSprite(name) != null) {
-              count += 1;
-              name = file.split(".")[0] + count;
-            }
-            file = name + ".png";
-            return _this.app.client.sendRequest({
-              name: "write_project_file",
-              project: _this.app.project.id,
-              file: "sprites/" + file,
-              content: canvas.toDataURL().split(",")[1],
-              properties: prefs
-            }, function(msg) {
-              _this.app.project.updateSpriteList();
-              div.style.width = "0px";
-              return setTimeout((function() {
-                return div.style.display = "none";
-              }), 1000);
-            });
-          };
-        };
-      })(this));
-      div.appendChild(button);
-    }
-    return document.querySelector("#project-contents-view .sprite-list").appendChild(div);
-  };
-
-  ProjectDetails.prototype.createSpriteThumb = function(sprite) {
-    var canvas, mouseover, update;
-    canvas = document.createElement("canvas");
-    canvas.width = 100;
-    canvas.height = 100;
-    sprite.loaded = (function(_this) {
-      return function() {
-        var context, frame, h, r, w;
-        context = canvas.getContext("2d");
-        frame = sprite.frames[0].getCanvas();
-        r = Math.min(100 / frame.width, 100 / frame.height);
-        context.imageSmoothingEnabled = false;
-        w = r * frame.width;
-        h = r * frame.height;
-        return context.drawImage(frame, 50 - w / 2, 50 - h / 2, w, h);
-      };
-    })(this);
-    mouseover = false;
-    update = (function(_this) {
-      return function() {
-        var context, dt, frame, h, r, t, w;
-        if (mouseover && sprite.frames.length > 1) {
-          requestAnimationFrame(function() {
-            return update();
-          });
-        }
-        if (sprite.frames.length < 1) {
-          return;
-        }
-        dt = 1000 / sprite.fps;
-        t = Date.now();
-        frame = mouseover ? Math.floor(t / dt) % sprite.frames.length : 0;
-        context = canvas.getContext("2d");
-        context.imageSmoothingEnabled = false;
-        context.clearRect(0, 0, 100, 100);
-        frame = sprite.frames[frame].getCanvas();
-        r = Math.min(100 / frame.width, 100 / frame.height);
-        w = r * frame.width;
-        h = r * frame.height;
-        return context.drawImage(frame, 50 - w / 2, 50 - h / 2, w, h);
-      };
-    })(this);
-    canvas.addEventListener("mouseenter", (function(_this) {
-      return function() {
-        mouseover = true;
-        return update();
-      };
-    })(this));
-    canvas.addEventListener("mouseout", (function(_this) {
-      return function() {
-        return mouseover = false;
-      };
-    })(this));
-    canvas.updateSprite = update;
-    return canvas;
+    view = new FolderView(manager, document.querySelector("#project-contents-view .code-list"));
+    this.source_folder = view;
+    view.editable = false;
+    view.rebuildList(folder);
   };
 
   ProjectDetails.prototype.setSpriteList = function(files) {
-    var f, j, len;
+    var f, folder, j, len, manager, project, s, table;
+    table = {};
+    this.sprites = {};
+    manager = {
+      folder: "sprites",
+      item: "sprite",
+      openItem: (function(_this) {
+        return function(item) {
+          _this.sprites_folder_view.setSelectedItem(item);
+          _this.selected_sprite = _this.sprites[item];
+          if ((_this.app.project != null) && !_this.imported_sprites[item]) {
+            document.querySelector("#project-contents-sprite-import span").innerText = _this.app.translator.get("Import %ITEM% to project %PROJECT%").replace("%ITEM%", item.replace(/-/g, "/")).replace("%PROJECT%", _this.app.project.title);
+            return document.getElementById("project-contents-sprite-import").style.display = "block";
+          } else {
+            return document.getElementById("project-contents-sprite-import").style.display = "none";
+          }
+        };
+      })(this)
+    };
+    project = JSON.parse(JSON.stringify(this.project));
+    project.getFullURL = function() {
+      var url;
+      return url = location.origin + ("/" + project.owner + "/" + project.slug + "/");
+    };
+    project.map_list = [];
+    project.notifyListeners = function() {};
+    folder = new ProjectFolder(null, "sprites");
     for (j = 0, len = files.length; j < len; j++) {
       f = files[j];
-      this.createSpriteBox(f.file, f.properties);
+      s = new ProjectSprite(project, f.file, null, null, f.properties);
+      folder.push(s);
+      table[s.name] = s;
+      this.sprites[s.name] = s;
     }
-  };
-
-  ProjectDetails.prototype.createImportButton = function(div, file, folder) {
-    var button, clicked, i, span;
-    button = document.createElement("div");
-    i = document.createElement("i");
-    i.classList.add("fa");
-    i.classList.add("fa-download");
-    button.appendChild(i);
-    span = document.createElement("span");
-    span.innerText = this.app.translator.get("Import to project") + (" " + this.app.project.title);
-    button.appendChild(span);
-    clicked = false;
-    return button.addEventListener("click", (function(_this) {
-      return function() {
-        var source;
-        if (clicked) {
-          return;
-        }
-        clicked = true;
-        source = new Image;
-        source.crossOrigin = "Anonymous";
-        source.src = location.origin + ("/" + _this.project.owner + "/" + _this.project.slug + "/" + file);
-        return source.onload = function() {
-          var canvas, count, name;
-          canvas = document.createElement("canvas");
-          canvas.width = source.width;
-          canvas.height = source.height;
-          canvas.getContext("2d").drawImage(source, 0, 0);
-          name = file.split(".")[0];
-          count = 1;
-          while (_this.app.project.getSprite(name) != null) {
-            count += 1;
-            name = file.split(".")[0] + count;
-          }
-          file = name + ".png";
-          return _this.app.client.sendRequest({
-            name: "write_project_file",
-            project: _this.app.project.id,
-            file: "sprites/" + file,
-            content: canvas.toDataURL().split(",")[1],
-            properties: prefs
-          }, function(msg) {
-            _this.app.project.updateSpriteList();
-            div.style.width = "0px";
-            return setTimeout((function() {
-              return div.style.display = "none";
-            }), 1000);
-          });
-        };
-      };
-    })(this));
-  };
-
-  ProjectDetails.prototype.createSoundBox = function(file, prefs) {
-    var div, img, span;
-    div = document.createElement("div");
-    div.classList.add("sound");
-    img = new Image;
-    img.src = location.origin + ("/" + this.project.owner + "/" + this.project.slug + "/sounds_th/" + (file.replace(".wav", ".png")));
-    div.appendChild(img);
-    div.appendChild(document.createElement("br"));
-    span = document.createElement("span");
-    span.innerText = file.split(".")[0];
-    div.appendChild(span);
-    div.addEventListener("click", (function(_this) {
-      return function() {
-        var audio, funk, url;
-        url = location.origin + ("/" + _this.project.owner + "/" + _this.project.slug + "/sounds/" + file);
-        audio = new Audio(url);
-        audio.play();
-        funk = function() {
-          audio.pause();
-          return document.body.removeEventListener("mousedown", funk);
-        };
-        return document.body.addEventListener("mousedown", funk);
-      };
-    })(this));
-    return document.querySelector("#project-contents-view .sound-list").appendChild(div);
+    this.sprites_folder_view = new FolderView(manager, document.querySelector("#project-contents-view .sprite-list"));
+    this.sprites_folder_view.editable = false;
+    this.sprites_folder_view.rebuildList(folder);
+    document.getElementById("project-contents-sprite-import").style.display = "none";
   };
 
   ProjectDetails.prototype.setSoundList = function(files) {
-    var f, j, len;
+    var f, folder, j, len, manager, project, s, table, view;
     if (files.length > 0) {
       document.getElementById("project-contents-menu-sounds").style.display = "block";
     } else {
       document.getElementById("project-contents-menu-sounds").style.display = "none";
     }
+    table = {};
+    manager = {
+      folder: "sounds",
+      item: "sound",
+      openItem: function(item) {
+        return table[item].play();
+      }
+    };
+    project = JSON.parse(JSON.stringify(this.project));
+    project.getFullURL = function() {
+      var url;
+      return url = location.origin + ("/" + project.owner + "/" + project.slug + "/");
+    };
+    folder = new ProjectFolder(null, "sounds");
     for (j = 0, len = files.length; j < len; j++) {
       f = files[j];
-      this.createSoundBox(f.file);
+      s = new ProjectSound(project, f.file);
+      folder.push(s);
+      table[s.name] = s;
     }
-  };
-
-  ProjectDetails.prototype.createMusicBox = function(file, prefs) {
-    var div, img, span;
-    div = document.createElement("div");
-    div.classList.add("music");
-    img = new Image;
-    img.src = location.origin + ("/" + this.project.owner + "/" + this.project.slug + "/music_th/" + (file.replace(".mp3", ".png")));
-    div.appendChild(img);
-    div.appendChild(document.createElement("br"));
-    span = document.createElement("span");
-    span.innerText = file.split(".")[0];
-    div.appendChild(span);
-    div.addEventListener("click", (function(_this) {
-      return function() {
-        var audio, funk, url;
-        url = location.origin + ("/" + _this.project.owner + "/" + _this.project.slug + "/music/" + file);
-        audio = new Audio(url);
-        audio.play();
-        funk = function() {
-          audio.pause();
-          return document.body.removeEventListener("mousedown", funk);
-        };
-        return document.body.addEventListener("mousedown", funk);
-      };
-    })(this));
-    return document.querySelector("#project-contents-view .music-list").appendChild(div);
+    view = new FolderView(manager, document.querySelector("#project-contents-view .sound-list"));
+    view.editable = false;
+    view.rebuildList(folder);
   };
 
   ProjectDetails.prototype.setMusicList = function(files) {
-    var f, j, len;
+    var f, folder, j, len, manager, project, s, table, view;
     if (files.length > 0) {
       document.getElementById("project-contents-menu-music").style.display = "block";
     } else {
       document.getElementById("project-contents-menu-music").style.display = "none";
     }
+    table = {};
+    manager = {
+      folder: "music",
+      item: "music",
+      openItem: function(item) {
+        return table[item].play();
+      }
+    };
+    project = JSON.parse(JSON.stringify(this.project));
+    project.getFullURL = (function(_this) {
+      return function() {
+        var url;
+        return url = location.origin + ("/" + project.owner + "/" + project.slug + "/");
+      };
+    })(this);
+    folder = new ProjectFolder(null, "sounds");
     for (j = 0, len = files.length; j < len; j++) {
       f = files[j];
-      this.createMusicBox(f.file, f.properties);
+      s = new ProjectMusic(project, f.file);
+      folder.push(s);
+      table[s.name] = s;
     }
+    view = new FolderView(manager, document.querySelector("#project-contents-view .music-list"));
+    view.editable = false;
+    view.rebuildList(folder);
+  };
+
+  ProjectDetails.prototype.setAssetList = function(files) {
+    var f, folder, j, len, manager, project, s, table, view;
+    if (files.length > 0) {
+      document.getElementById("project-contents-menu-assets").style.display = "block";
+    } else {
+      document.getElementById("project-contents-menu-assets").style.display = "none";
+    }
+    table = {};
+    manager = {
+      folder: "assets",
+      item: "asset",
+      openItem: function(item) {}
+    };
+    project = JSON.parse(JSON.stringify(this.project));
+    project.getFullURL = function() {
+      var url;
+      return url = location.origin + ("/" + project.owner + "/" + project.slug + "/");
+    };
+    folder = new ProjectFolder(null, "assets");
+    for (j = 0, len = files.length; j < len; j++) {
+      f = files[j];
+      s = new ProjectAsset(project, f.file);
+      folder.push(s);
+      table[s.name] = s;
+    }
+    view = new FolderView(manager, document.querySelector("#project-contents-view .asset-list"));
+    view.editable = false;
+    view.rebuildList(folder);
   };
 
   ProjectDetails.prototype.setMapList = function(files) {
@@ -660,7 +621,7 @@ this.ProjectDetails = (function() {
     if ((this.app.user != null) && (this.app.user.nick === c.user || this.app.user.flags.admin)) {
       buttons = document.createElement("div");
       buttons.classList.add("buttons");
-      buttons.appendChild(this.createButton("trash", "Delete", "red", (function(_this) {
+      buttons.appendChild(this.createButton("trash", this.app.translator.get("Delete"), "red", (function(_this) {
         return function() {
           return _this.deleteComment(c);
         };
@@ -711,19 +672,53 @@ this.ProjectDetails = (function() {
   ProjectDetails.prototype.editComment = function(id, text) {};
 
   ProjectDetails.prototype.deleteComment = function(c) {
-    if (confirm(this.app.translator.get("Do you really want to delete this comment?"))) {
-      return this.app.client.sendRequest({
-        name: "delete_project_comment",
-        project: this.project.id,
-        id: c.id
-      }, (function(_this) {
-        return function(msg) {
+    return ConfirmDialog.confirm(this.app.translator.get("Do you really want to delete this comment?"), this.app.translator.get("Delete"), this.app.translator.get("Cancel"), (function(_this) {
+      return function() {
+        return _this.app.client.sendRequest({
+          name: "delete_project_comment",
+          project: _this.project.id,
+          id: c.id
+        }, function(msg) {
           return _this.updateComments();
-        };
-      })(this));
-    }
+        });
+      };
+    })(this));
   };
 
   return ProjectDetails;
+
+})();
+
+this.ExploreProjectSource = (function() {
+  function ExploreProjectSource(project1, file1, size) {
+    var s;
+    this.project = project1;
+    this.file = file1;
+    this.size = size != null ? size : 0;
+    this.name = this.file.split(".")[0];
+    this.ext = this.file.split(".")[1];
+    this.filename = this.file;
+    this.file = "ms/" + this.file;
+    s = this.name.split("-");
+    this.shortname = s[s.length - 1];
+    this.path_prefix = s.length > 1 ? s.splice(0, s.length - 1).join("-") + "-" : "";
+    this.content = "";
+    this.fetched = false;
+    this.reload();
+  }
+
+  ExploreProjectSource.prototype.reload = function() {
+    return fetch(this.project.getFullURL() + ("ms/" + this.name + ".ms")).then((function(_this) {
+      return function(result) {
+        return result.text().then(function(text) {
+          _this.content = text;
+          _this.fetched = true;
+          return _this.project.notifyListeners(_this);
+        });
+      };
+    })(this));
+  };
+
+  return ExploreProjectSource;
 
 })();

@@ -22,8 +22,9 @@ class @Keyboard
     res
 
   keydown:(event)->
-    event.preventDefault()
-    #console.info event
+    if not event.altKey and not event.ctrlKey and not event.metaKey and not /Escape|(F\d+)/.test event.key
+      event.preventDefault()
+
     code = event.code
     key = event.key
 
@@ -71,4 +72,10 @@ class @Keyboard
       continue if key == "press" or key == "release"
       @previous[key] = @keyboard[key]
 
+    return
+
+  reset:()->
+    for key of @keyboard
+      continue if key in ["press","release"]
+      @keyboard[key] = 0
     return

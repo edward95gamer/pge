@@ -5,6 +5,7 @@ Tag = require __dirname+"/tag.js"
 Token = require __dirname+"/token.js"
 Translator = require __dirname+"/translator.js"
 Forum = require __dirname+"/../forum/forum.js"
+Cleaner = require __dirname+"/cleaner.js"
 
 class @Content
   constructor:(@server,@db,@files)->
@@ -16,6 +17,7 @@ class @Content
 
     @projects = {}
     @tags = {}
+    @sorted_tags = []
 
     @project_count = 0
     @user_count = 0
@@ -25,6 +27,8 @@ class @Content
     @hot_projects = []
     @top_projects = []
     @new_projects = []
+    @plugin_projects = []
+    @library_projects = []
     @updatePublicProjects()
 
     console.info "Content loaded: #{@user_count} users and #{@project_count} projects"
@@ -34,13 +38,17 @@ class @Content
 
     @translator = new Translator @
     @forum = new Forum @
-    #@test_data = new TestData @
+
+    @cleaner = new Cleaner @
+
+    if @files.converter?
+      @files.converter.start @
 
   close:()->
     clearInterval @top_interval
     clearInterval @log_interval
     @forum.close()
-    @test_data.close() if @test_data?
+    @cleaner.stop() if @cleaner?
 
   statusLog:()->
     usage process.pid,(err,result)=>
@@ -114,6 +122,7 @@ class @Content
       if not tag?
         tag = new Tag(t)
         @tags[t] = tag
+        @sorted_tags.push tag
       tag.add project
 
     return
@@ -121,7 +130,8 @@ class @Content
   loadToken:(record)->
     data = record.get()
     token = new Token @,record
-    @tokens[token.value] = token
+    if token.user?
+      @tokens[token.value] = token
     token
 
   initLikes:()->
@@ -136,11 +146,17 @@ class @Content
     @hot_projects = []
     @top_projects = []
     @new_projects = []
+    @plugin_projects = []
+    @library_projects = []
     for key,project of @projects
-      if project.public and project.owner.flags["validated"] and not project.deleted and not project.owner.flags["censored"]
+      if project.public and not project.unlisted and project.owner.flags["validated"] and not project.deleted and not project.owner.flags["censored"]
         @hot_projects.push project
         @top_projects.push project
         @new_projects.push project
+        if project.type == "plugin"
+          @plugin_projects.push project
+        if project.type == "library"
+          @library_projects.push project
 
     @sortPublicProjects()
 
@@ -148,17 +164,22 @@ class @Content
     time = Date.now()
     @top_projects.sort (a,b)-> b.likes-a.likes
     @new_projects.sort (a,b)-> b.first_published-a.first_published
+    @sorted_tags.sort (a,b)-> b.uses+b.num_users*10-a.uses-a.num_users*10
+    @plugin_projects.sort (a,b)-> b.likes-a.likes
+    @library_projects.sort (a,b)-> b.likes-a.likes
 
-    return if @top_projects.length<2 or @new_projects.length<2
+    return if @top_projects.length<5
 
     now = Date.now()
-    maxLikes = Math.max(1,@top_projects[0].likes)
-    maxAge = now-@new_projects[@new_projects.length-1].first_published
+    maxLikes = Math.max(1,@top_projects[4].likes)
+
+    fade = (x)->
+      1-Math.max(0,Math.min(1,x))
 
     note = (p)->
-      hours = Math.max(0,(now-p.first_published))/1000/3600
-      agemark = Math.exp(-hours/24/7)
-      p.likes/maxLikes*50+50*agemark
+      recent = fade (now-p.first_published)/1000/3600/24/4
+      rating = p.likes/maxLikes*(.15+2*fade((now-p.first_published)/1000/3600/24/180))
+      recent+rating
 
     @hot_projects.sort (a,b)->
       note(b)-note(a)
@@ -170,10 +191,14 @@ class @Content
     if pub and project.first_published == 0
       project.set "first_published",Date.now()
 
-    if pub
-      @hot_projects.push(project) if @hot_projects.indexOf(project)<0
-      @top_projects.push(project) if @top_projects.indexOf(project)<0
-      @new_projects.push(project) if @new_projects.indexOf(project)<0
+    if pub and not project.unlisted
+      @hot_projects.push(project) if @hot_projects.indexOf(project) < 0
+      @top_projects.push(project) if @top_projects.indexOf(project) < 0
+      @new_projects.push(project) if @new_projects.indexOf(project) < 0
+      if project.type == "plugin" and @plugin_projects.indexOf(project) < 0
+        @plugin_projects.push project
+      if project.type == "library" and @library_projects.indexOf(project) < 0
+        @library_projects.push project
       #@sortPublicProjects()
     else
       index = @hot_projects.indexOf(project)
@@ -185,6 +210,33 @@ class @Content
       index = @new_projects.indexOf(project)
       if index>=0
         @new_projects.splice index,1
+
+      index = @plugin_projects.indexOf(project)
+      if index>=0
+        @plugin_projects.splice index,1
+
+      index = @library_projects.indexOf(project)
+      if index>=0
+        @library_projects.splice index,1
+
+  setProjectType:(project,type)->
+    project.set("type",type)
+    if project.public
+      if project.type == "plugin"
+        if @plugin_projects.indexOf(project) < 0
+          @plugin_projects.push project
+      else
+        index = @plugin_projects.indexOf(project)
+        if index>=0
+          @plugin_projects.splice index,1
+
+      if project.type == "library"
+        if @library_projects.indexOf(project) < 0
+          @library_projects.push project
+      else
+        index = @library_projects.indexOf(project)
+        if index>=0
+          @library_projects.splice index,1
 
   projectDeleted:(project)->
     @project_count -= 1
@@ -199,11 +251,20 @@ class @Content
     if index>=0
       @new_projects.splice index,1
 
+    index = @plugin_projects.indexOf(project)
+    if index>=0
+      @plugin_projects.splice index,1
+
+    index = @library_projects.indexOf(project)
+    if index>=0
+      @library_projects.splice index,1
+
   addProjectTag:(project,t)->
     tag = @tags[t]
     if not tag?
       tag = new Tag(t)
       @tags[t] = tag
+      @sorted_tags.push tag
     tag.add project
 
   removeProjectTag:(project,t)->
@@ -289,24 +350,25 @@ class @Content
       owner: owner.id
       orientation: data.orientation
       aspect: data.aspect
+      type: data.type
+      language: data.language
       graphics: data.graphics
       libs: data.libs
+      tabs: data.tabs
+      plugins: data.plugins
+      libraries: data.libraries
+      description: data.description or ""
 
     record = @db.create "projects",d
     project = @loadProject record
     if empty
       callback(project)
     else
-      content = """
-init = function()
-end
+      if project.language? and DEFAULT_CODE[project.language]?
+        content = DEFAULT_CODE[project.language]
+      else
+        content = DEFAULT_CODE.microscript
 
-update = function()
-end
-
-draw = function()
-end
-"""
       @files.write "#{owner.id}/#{project.id}/ms/main.ms",content,()=>
         @files.copyFile "../static/img/defaultappicon.png","#{owner.id}/#{project.id}/sprites/icon.png",()=>
           callback(project)
@@ -352,5 +414,49 @@ end
       user.setFlag("validated",true)
       translator = @translator.getTranslator(user.language)
       user.notify translator.get "Your e-mail address is now validated"
+
+
+DEFAULT_CODE =
+  python: """
+def init():
+  pass
+
+def update():
+  pass
+
+def draw():
+  pass
+  """
+  javascript: """
+init = function() {
+}
+
+update = function() {
+}
+
+draw = function() {
+}
+  """
+  lua: """
+init = function()
+end
+
+update = function()
+end
+
+draw = function()
+end
+  """
+  microscript: """
+init = function()
+end
+
+update = function()
+end
+
+draw = function()
+end
+  """
+
 
 module.exports = @Content

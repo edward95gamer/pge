@@ -1,3 +1,21 @@
+.assets-left {
+  position: absolute ;
+  left: 0 ;
+  width: 400px ;
+  top: 0 ;
+  bottom: 0 ;
+  overflow: hidden ;
+}
+
+.assets-right {
+  position: absolute ;
+  right: 0px ;
+  width: 400px ;
+  top: 0 ;
+  bottom: 0 ;
+  overflow: hidden ;
+}
+
 .assets-drop {
   position: absolute ;
   bottom: 200px ;
@@ -16,22 +34,174 @@
   font-size: 20px ;
 }
 
+.assets-bar {
+  position: absolute ;
+  top: 0 ;
+  height: 26px ;
+  left: 0 ;
+  right: 0 ;
+  background: hsl(200,30%,30%) ;
+  padding: 7px 10px 7px 2px ;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.create-asset-button {
+  display: inline-block ;
+  padding: 4px 8px ;
+  background: hsl(160,50%,40%);
+  border-radius: 3px ;
+  font-size: 14px ;
+  cursor: pointer ;
+  color: #FFF ;
+  text-align: center ;
+}
+.create-asset-button i {
+  margin-right: 5px ;
+}
+.create-folder-button {
+  margin-left: 10px ;
+  padding: 5px ;
+  font-size: 16px ;
+  background: hsl(0,30%,50%) ;
+  border-radius: 3px ;
+  cursor: pointer ;
+}
+
 .assetlist {
   position: absolute;
   background: rgba(0,0,0,.25) ;
   left: 2px ;
-  top: 2px ;
-  bottom: 40px ;
+  top: 40px ;
+  bottom: 0px ;
   right: 2px ;
   overflow: auto ;
   text-align: center ;
   line-height: 0 ;
-  padding-top: 10px ;
+  padding-top: 0px ;
   padding-bottom: 10px ;
 }
 
 .assetlist.dragover {
-  background: rgba(255,255,255,.1) ;
+  background: hsla(0,50%,50%,.2) ;
+}
+
+.assetlist .folder {
+  margin-top: 2px ;
+}
+
+.assetlist .folder-title {
+  line-height: normal ;
+  background: hsl(200,30%,30%) ;
+  text-align: left ;
+  cursor: pointer ;
+  padding: 6px 10px ;
+  font-family: Ubuntu,sans-serif;
+  font-size: 14px ;
+  color: rgba(255,255,255,.8);
+  white-space: nowrap ;
+  border-radius: 3px ;
+}
+
+.assetlist .folder-title:hover {
+  background: hsl(200,30%,40%) ;
+}
+
+.assetlist .folder.selected > .folder-title {
+  background: hsl(0,30%,50%) ;
+}
+
+.assetlist .folder-title i {
+  color: rgba(255,255,255,.5) ;
+  margin-right: 5px ;
+  font-size: 16px ;
+  margin-top: 1px ;
+}
+
+.assetlist .folder-title .trash {
+  float: right;
+  display: none ;
+}
+
+.assetlist .folder.selected > .folder-title .trash {
+  display: inline-block ;
+}
+
+.assetlist .folder-title .pencil {
+  display: none ;
+  margin-left: 5px ;
+}
+
+.assetlist .folder.selected > .folder-title .pencil {
+  display: inline-block ;
+}
+
+.assetlist .folder-title input {
+  border: none ;
+  border-radius: 3px ;
+  font-size: 14px ;
+  width: 100px ;
+  padding: 2px 5px ;
+  background: rgba(0,0,0,.5);
+  color: rgba(255,255,255,.8);
+  margin: -2px ;
+  font-family: Ubuntu,sans-serif ;
+}
+
+.assetlist .folder-title input:focus {
+  outline: none ;
+}
+
+
+.assetlist .folder-content {
+  border-left: solid 4px rgba(255,255,255,.1) ;
+  background: rgba(255,255,255,.05) ;
+  padding: 2px 0px 5px 3px;
+  margin-bottom: 10px ;
+  margin-top: 2px ;
+  display: none ;
+}
+
+.assetlist .folder.selected > .folder-content {
+/*  border-left: solid 4px hsla(0,50%,50%,.4) ;
+  border-bottom: solid 4px hsla(0,50%,50%,.4) ;*/
+  background: hsla(0,50%,50%,.2) ;
+}
+
+.assetlist .folder.open > .folder-content {
+  display: block ;
+}
+
+.assetlist .folder > .folder-title i.caret {
+  margin-right: 9px ;
+}
+.assetlist .folder.open > .folder-title i.caret {
+  margin-right: 5px ;
+  position: relative;
+  right: 3px ;
+}
+
+.assetlist .folder > .folder-title i.folder {
+  margin-right: 5px ;
+}
+.assetlist .folder.open > .folder-title i.folder {
+  margin-right: 3px ;
+}
+
+.assetlist .folder > .folder-title i.caret:before {
+  content: "\f0da";
+}
+
+.assetlist .folder.open > .folder-title i.caret:before {
+  content: "\f0d7";
+}
+
+.assetlist .folder > .folder-title i.folder:before {
+  content: "\f07b" ;
+}
+
+.assetlist .folder.open > .folder-title i.folder:before {
+  content: "\f07c" ;
 }
 
 .asseteditor {
@@ -46,7 +216,7 @@
   position: relative ;
   cursor: pointer ;
   display: inline-block ;
-  margin: 1px ;
+  margin: 3px 1px 1px 1px;
   width: 64px ;
   height: 84px ;
   font-size: 12px ;
@@ -56,7 +226,7 @@
   overflow: hidden ;
 }
 .asset-box.selected {
-  margin: 0px;
+  margin: 2px 0 0 0;
   border: solid 1px rgba(255,255,255,.5) ;
   background: hsl(200,30%,30%);
 }
@@ -73,6 +243,7 @@
   right: 0 ;
   height: 18px ;
   line-height: normal ;
+  padding: 0 4px ;
 }
 
 .asset-box .active-user {
@@ -85,6 +256,57 @@
   background: hsl(0,50%,50%);
   padding: 4px ;
   border-radius: 8px ;
+}
+
+.asset-box-map {
+  width: 128px ;
+  height: 116px ;
+}
+.asset-box-sound {
+  width: 96px ;
+  height: 84px ;
+}
+.asset-box-music {
+  width: 192px ;
+  height: 84px ;
+}
+.asset-box-asset {
+  width: 128px ;
+  height: 116px ;
+}
+
+.asset-box-source {
+  height: auto;
+  padding: 6px 10px ;
+  text-align: left;
+  display: block;
+  font-size: 14px;
+  width: auto;
+  white-space: nowrap;
+  border-radius: 0 ;
+  background: none ;
+  box-shadow: none ;
+}
+.asset-box-source:hover {
+  background: rgba(255,255,255,.1);
+}
+.asset-box-source.selected {
+  border: none ;
+  background: rgba(255,255,255,.2);
+  margin: 3px 1px 1px 1px ;
+}
+.asset-box-source .asset-box-name {
+  position: static ;
+}
+
+.asset-box-source .asset-box-name i {
+  margin-right: 5px ;
+  font-size: 16px;
+  color: rgba(255,255,255,.5);
+}
+
+.asset-box-source .active-user {
+    bottom: 3px;
 }
 
 .assetbar {
@@ -170,22 +392,185 @@
   cursor: pointer ;
   white-space: nowrap;
 }
-.create-asset-button {
+
+#asset-viewer {
   position: absolute ;
-  bottom: 0px ;
-  height: 40px;
+  top: 40px ;
   left: 0 ;
   right: 0 ;
-  padding: 0px 30px ;
-  background: hsl(160,50%,40%);
-  font-size: 18px ;
-  cursor: pointer ;
-  color: #FFF ;
-  z-index: 1 ;
-  box-shadow: 0 -10px 20px #000;
-  line-height: 40px ;
-  text-align: center ;
+  bottom: 40px ;
 }
-.create-asset-button i {
-  margin-right: 10px ;
+
+#font-asset-viewer {
+  position: absolute ;
+  top: 0 ;
+  left: 0 ;
+  right: 0 ;
+  bottom: 0 ;
+  padding: 40px ;
+  font-size: 2em ;
+  color: #CCC ;
+  overflow: hidden ;
+}
+#font-asset-viewer h1 {
+  font-family: inherit ;
+  color: #FFF ;
+  font-size: 2em ;
+}
+
+#model-asset-viewer {
+  position: absolute ;
+  top: 2px ;
+  left: 2px ;
+  right: 0px ;
+  bottom: 0px ;
+  overflow: hidden ;
+}
+#model-asset-viewer canvas {
+  position: absolute ;
+  top: 0 ;
+  left: 0 ;
+  right: 0 ;
+  bottom: 0 ;
+}
+
+#text-asset-viewer {
+  position: absolute ;
+  top: 2px ;
+  left: 2px ;
+  right: 0px ;
+  bottom: 0px ;
+  overflow: hidden ;
+}
+#image-asset-viewer {
+  position: absolute ;
+  top: 2px ;
+  left: 2px ;
+  right: 0px ;
+  bottom: 0px ;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+
+#asset-load-code {
+  position: absolute ;
+  left: 0 ;
+  right: 0 ;
+  bottom: 0px ;
+  height: 20px ;
+  padding: 10px ;
+  white-space: nowrap ;
+  display: none ;
+}
+#asset-load-code div {
+  display: inline-block ;
+  position: relative ;
+}
+#asset-load-code i {
+  position: absolute ;
+  left: 10px ;
+  top: 4px ;
+  color: rgba(0,0,0,.5);
+  cursor: pointer ;
+}
+
+#asset-load-code select {
+  font-size: 14px ;
+  background: rgba(255,255,255,.2);
+  color: rgba(255,255,255,.8);
+  border: none;
+  padding: 2px;
+  border-radius: 5px ;
+  margin: 0 10px 0 0;
+  font-family: "Source Sans Pro",Verdana ;
+}
+
+#asset-load-code select option {
+  background-color: hsl(200,50%,10%);
+  padding: 2px ;
+}
+
+#asset-load-code select:focus {
+  outline: none ;
+  background: rgba(255,255,255,.4);
+}
+
+#asset-load-code input {
+  text-align: left;
+  background: hsla(200,40%,80%,.8);
+  box-sizing: border-box;
+  width: 500px ;
+  border-radius: 5px;
+  border: none ;
+  padding: 5px 5px 5px 30px ;
+  font-family: 'Ubuntu Mono';
+}
+#asset-load-code input:focus {
+  border: none ;
+  outline: none ;
+  background: hsla(200,40%,80%,1);
+}
+#asset-load-code input::selection {
+  background: rgba(0,0,0,.3);
+}
+
+
+
+.asset-code-tip {
+  display: inline-block ;
+  white-space: nowrap ;
+  margin-left: 20px ;
+}
+.asset-code-tip div {
+  display: inline-block ;
+  position: relative ;
+}
+.asset-code-tip i {
+  position: absolute ;
+  left: 10px ;
+  top: 4px ;
+  color: rgba(0,0,0,.5);
+  cursor: pointer ;
+}
+
+.asset-code-tip select {
+  font-size: 14px ;
+  background: rgba(255,255,255,.2);
+  color: rgba(255,255,255,.8);
+  border: none;
+  padding: 2px;
+  border-radius: 5px ;
+  margin: 0 10px 0 0;
+  font-family: "Source Sans Pro",Verdana ;
+}
+
+.asset-code-tip select option {
+  background-color: hsl(200,50%,10%);
+  padding: 2px ;
+}
+
+.asset-code-tip select:focus {
+  outline: none ;
+  background: rgba(255,255,255,.4);
+}
+
+.asset-code-tip input {
+  text-align: left;
+  background: hsla(200,40%,80%,.8);
+  box-sizing: border-box;
+  width: 500px ;
+  border-radius: 5px;
+  border: none ;
+  padding: 5px 5px 5px 30px ;
+  font-family: 'Ubuntu Mono';
+}
+.asset-code-tip input:focus {
+  border: none ;
+  outline: none ;
+  background: hsla(200,40%,80%,1);
+}
+.asset-code-tip input::selection {
+  background: rgba(0,0,0,.3);
 }

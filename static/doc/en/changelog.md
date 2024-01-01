@@ -1,5 +1,238 @@
 ## Changelog
 
+### Update 2022-06-16
+* New project synchronization feature, accessible from the new project tab "Sync"
+  * You have a public project A that you consider "released" but want to update from time to time.
+  * Clone your project A ; let's call the clone B
+  * work on project B without worrying to break anything in your public project A (which remains untouched for now)
+  * once you have a solid new version of B, open project A and activate the tab "Sync"
+  * in tab Sync (of project A), select B as synchronization source
+  * review the list of changes and proceed ; your project A has pulled all the changes you made to B
+
+### Update 2022-06-14
+* `screen.setDrawRotation()` and `screen.setDrawScale()` do not affect `screen.drawLine()`, `screen.drawPolyline()`,
+`screen.drawPolygon()` and `screen.fillPolygon()` anymore.
+It makes more sense like this, as the initial choice to make them affected was made because of the lack of `screen.setRotation()` and
+`screen.setScale()` ; these two functions have since been added.
+If you used `screen.setDrawRotation()` or `screen.setDrawScale()` to affect drawing lines and polygons in one of your projects,
+this update might break it.
+
+### Update 2022-06-07
+* Publishing to Explore section made more friendly and allows screening clones and empty projects
+* Improved microScript 2.0 warning reporting when live coding
+
+### Update 2022-06-01
+* Libraries reloaded! You can now browse and import libraries to your project in one click
+* Embed JavaScript code in your microScript app or library
+* new triple double-quote string delimiter: `"""some text"""` (useful for embedding JavaScript)
+* some auto-indent improvements for microScript 2.0
+* Fixed #138 (too many 'end' did not raise an error)
+
+### Update 2022-05-23
+* Plug-ins! Create your own plug-ins or just use community plug-ins for your project
+* `system.file.load`: open file dialog and let user load a file
+* `system.file.dropped`: check it to see if the user dropped a file to your app.
+* Added Discord link on forum #108
+* Fixed periodic threads extra cycles #130
+* Fixed inputs update when update() is sliced, #109
+
+### Update 2022-05-13
+* Project Access API: create and manage project files programmatically
+  * `system.project.listFiles()`
+  * `system.project.readFile()`
+  * `system.project.writeFile()`
+  * `system.project.deleteFile()`
+(see: https://github.com/pmgl/microstudio/wiki/en-API-cheatsheet#project-access-api)
+* Fixed #128 storage.set broken in Lua / Python / JS
+* Fixed bug when changing language of an existing project
+* Fixed impossible to move map from folder to root
+* Fixed ms 2.0 bug when calling `super` and no super class is found
+(https://microstudio.dev/community/bugs/offline-version---crash-ide-page/390/)
+
+### Update 2022-05-09
+* Now remembering splitbar positions #119
+* `screen.drawSprite`: size can be omitted, will default to sprite size #120
+* Fixed storage space allowance when upgrading guest to user #122
+* Fixed #126 (project icon could be deleted)
+
+### Update 2022-05-03
+* **Folders!** ... now in all project tabs!
+* Sprite editor customizable background color
+* Sprite editor displays drawing coordinates
+* Map and sprite editors display a code snippet tip.
+* **Support for animated tiles in your maps!**
+
+### Update 2022-04-25
+* reworked Explore section, now correctly shows and queries all public projects (#66)
+* added tip for markdown support in project description (#77)
+* added warning when attempting to overwrite API globals (#101)
+* added noscript message for visitors with JavaScript disabled
+* mouse wheel events through `mouse.wheel` (-1 O or 1) (#70)
+* fixed default language for all projects prior to october 2021
+* Public project: added First Published date and Last Modified date (#103)
+* fixed coordinate problem with Image.drawPolygon
+
+### Update 2022-04-14
+* offscreen images, sprites, sounds
+* save image, sprite, or JSON object to file
+* ms 2.0 fix: auto-close parentheses
+
+### Update 2022-04-11
+* microScript 2.0 is now the default language for new projects!
+* documentation is now hosted on the Github wiki
+* HTML5 export: JavaScript - microScript interoperability
+* Fix: lock code editor when loading project
+* Fixed sound.stop()
+* many fixes related to microScript 2.0
+
+### Update 2022-04-04
+* microScript 2.0 beta
+  * fixed local.type
+  * Prototype for core types
+  * function.bind
+  * operator overloading
+* random.clone() (to be documented)
+* Fixed #97 and #98
+* Fixed asset_manager interface
+
+### Update 2022-03-23
+* microScript v2: variable.type
+* microScript v2: multi-line comments
+* microScript v2: binary ops
+* microScript v2: system.preemptive flag
+* do not reset screen transform when window is resized
+* Fixed #95
+* Reduced upfront microStudio website download (to be continued)
+
+### Update 2022-03-16
+* microScript v2: Threads are working!
+
+### Update 2022-03-14
+* screen space rotation and scaling: screen.setScale() and screen.setRotation()
+* Fixed #94 paste text into console
+* slight Time Machine UI improvement (and fixed #93)
+* Time Machine looping now replays recorded user inputs
+* microScript v2 fixes
+
+### Update 2022-03-11
+* Time Machine: go back in time and fix your code in the past!
+  * Start recording
+  * Rewind your game, replay past parts, see changes on screen and in the Watch window
+  * Restart playing from a past point in time
+  * Play in a loop while you adjust your code in realtime
+  * works only with microScript ; also restricted to projects using the core graphics API for now
+* Frame by frame: hit pause and then the step forward button to run your program frame by frame
+* Improved labelling of classes and object instances in the Watch window
+* Fixed a laughable bug with 60 fps stability optimization
+
+### Update 2022-03-08
+* Watch variables! There is a brand new, feature-rich variable watcher!
+  * see variables change in realtime
+  * explore and track values in deep data structures (objects and lists)
+  * change values on the fly
+  * works for microScript v1 (interpreted or transpiled) and v2
+
+### Update 2022-03-04
+* Fixed fast forward bug when pressing play several times
+* New API features on `system`:
+  * system.fps
+  * system.pause()
+  * system.exit()
+  * also documented system.prompt(), system.say(), system.inputs and system.language
+
+### Update 2022-02-25
+* Asset Manager! Activate the tab for your project, then import your text files (TXT and CSV), JSON data, fonts (TTF), 3D models (GLB and OBJ)
+* Sprite editor toolbar fixes by @Karlmolina (thanks!)
+* microScript editor indentation fix by @Karlmolina (thanks!)
+* microScript v1 interpreted now also supports native callbacks (useful when passing callbacks along to Babylon.js or other libs)
+* Improved help window layout (preventing it from hiding code) #84
+* Fixed #74 and #81
+
+### Update 2022-02-07
+* Flip and rotate sprite selection! Thanks to @HomineLudens for providing an initial implementation
+* Fixed wrong mouse inputs after system.prompt()
+* microScript v2 pre-alpha! It is very early though, don't check this one unless you are very curious. Most of the new features promised for v2 aren't there yet as I first focused on making all microScript v1 work on the new engine. Still, most of the hard work is done, what remains to be done is about 20% of it all.
+* Fixed deletion of non-empty folders
+* Fixed #79
+
+### Update 2022-01-31
+* Folders in sounds and music tabs
+* Project tabs will now scroll if your window / screen height is limited
+* Fixed bugs #76 #59 #73 #75 and #78, see https://github.com/pmgl/microstudio/issues?q=is%3Aissue+is%3Aclosed
+
+### Update 2022-01-18
+* Fixed project search filter broken when there are pending invitations
+* Set correct page title / description / twitter+facebook card image on public project links
+* Translation Fixes
+* Fixed incorrect transpiler output for while loops
+
+### Update 2021-12-22
+* Fixed parser bug: `//` enclosed in a string was parsed as a line comment
+
+### Update 2021-12-17
+* Split bars now react to touch events
+* You can draw sprites on touch screens
+* You can paint maps on touch screens
+
+### Update 2021-12-16
+* Improved the presentation of projects, allowing to use a screenshot as poster image
+* Easily take screenshots of your running program with the camera button
+* Set your screenshot as project poster image in one click
+* Removed and replace PixelatedImage
+
+### Update 2021-12-14
+* QR code display to easily run project on mobile!
+* Improved error reporting for Python language
+* Improved error reporting for JavaScript language
+* Choose project type from app, library or tutorial
+* Set project options on project creation (type, language, graphics API, optional libs)
+* Fixed user public page access when nickname has underscores
+* Fixed doc tab not updating when switching from one project to another
+* Added JimB007 examples to Babylon.js documentation
+* Added link to Github and Patreon on homepage
+* Fixed Execute button on user public page for projects of type tutorial
+* removed fullscreen to Community PWA manifest
+
+### Update 2021-12-07
+* Fixed broken console window after last update
+* Fixed undo pollution by using `editor.setReadOnly(true)` when away from code or doc tab
+* Implemented M3D.PointLight (thanks to HomineLudens)
+* Custom confirm dialogs to prevent standalone app focus problem
+
+### Update 2021-12-02
+* microScript: Hot reloading of classes: Changing your class while the program is running will affect all already instanciated objects!
+* microScript: Fixed transpiler parent class linking at runtime
+* New languages!!! Pick your desired programming language in the project options. You have access to the whole standard microStudio APIs and all optional libs (Pixi, Babylon, Matter.js ...) from your code in Python, JavaScript or Lua. Enjoy all the microStudio goodness: live coding, visual screen positioning help, contextual help and of course export to all target platforms, whatever the language or the optional libs.
+* New language: Python!
+* New language: JavaScript!
+* New language: Lua!
+
+### Update 2021-11-25
+* Using interpreter or transpiler is now an option of your project
+* You can thus now publish, export HTML5 or export to any target with transpiler active!
+* Fixed transpiler bug when functions are called with omitted arguments
+* Fixed cache interference when relaunching project
+
+### Update 2021-11-23
+* Fixed a bug with transpiled `for..in` loops
+* Updates and fixes to the IT doc and tutorials (thanks @HomineLudens)
+
+### Update 2021-11-19
+* Experimental features activated! (check "Experimental" in your user settings to get access):
+  * Alt graphics API PIXI.js (accelerated 2D)
+  * Alt graphics API Babylon.js (Full 3D API!)
+  * Alt graphics API M2D (simple accelerated 2D API, preview, built on PIXI.js)
+  * Alt graphics API M3D (simple 3D API, preview, built on Babylon.js)
+  * optional libs: matter.js (2D physics API) and cannon.js (3D physics API)
+  * bonus experimental feature: sound synthesizer preview (requires a MIDI keyboard and Chromium-based browser)
+
+* You can now mark your public projects "unlisted", allowing to share them without having them published on the main Explore page
+
+### Update 2021-11-05
+* microStudio standalone app! Download on:
+  * https://microstudio.itch.io/microstudio
+  * or https://github.com/pmgl/microstudio/releases
+
 ### Update 2021-10-26
 * Text input/output for the color picker (thanks to HomineLudens for his initial contribution of this feature!)
 * Added `screen.loadFont()` and `screen.isFontReady`, allowing to deal with asynchronous loading of fonts

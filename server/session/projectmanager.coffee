@@ -14,6 +14,12 @@ class @ProjectManager
       return true if link.accepted and (link.user == user)
     false
 
+  canReadProject:(user,project)->
+    return true if user == project.owner or project.public
+    for link in project.users
+      return true if link.accepted and (link.user == user)
+    false
+
   canWrite:(user)->
     return true if user == @project.owner
     for link in @project.users
@@ -33,11 +39,16 @@ class @ProjectManager
     if @listeners.indexOf(listener)<0
       @listeners.push listener
 
-  removeUser:(user)->
-    index = @users.indexOf user
+  removeSession:(session)->
+    index = @users.indexOf session
     if index>=0
       @users.splice index,1
-    @propagateUserListChange()
+
+    for file,lock of @locks
+      if lock.user == session
+        lock.time = 0
+
+    return
 
   removeListener:(listener)->
     index = @listeners.indexOf listener
@@ -296,9 +307,9 @@ class @ProjectManager
   writeProjectFile:(session,data)->
     return if not @canWrite session.user
     return if @project.deleted
-    return if not data.file? or not data.content?
-    return if data.content.length>10000000 # max file size 10 megabytes
-    if not /^(ms|sprites|maps|sounds|music|doc|assets)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,4}.(ms|png|json|wav|mp3|md|glb|jpg)$/.test(data.file)
+    return if not data.file?
+    return if data.content? and data.content.length>10000000 # max file size 10 megabytes
+    if not /^(ms|sprites|maps|sounds|music|doc|assets)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|md|glb|obj|jpg|ttf|txt|csv)$/.test(data.file)
       console.info "wrong file name: #{data.file}"
       return
 
@@ -309,27 +320,28 @@ class @ProjectManager
 
     file = "#{@project.owner.id}/#{@project.id}/#{data.file}"
 
-    if data.file.endsWith(".ms") or data.file.endsWith(".json") or data.file.endsWith(".md")
-      content = data.content
-    else
-      content = new Buffer(data.content,"base64")
+    if data.content?
+      if data.file.split(".")[1] in ["ms","json","md","txt","csv"]
+        content = data.content
+      else
+        content = new Buffer(data.content,"base64")
 
-    @project.content.files.write file,content,()=>
-      version += 1
-      @setFileVersion data.file,version
-      @setFileSize data.file,content.length
-      if data.properties?
-        @setFileProperties data.file,data.properties
+      @project.content.files.write file,content,()=>
+        version += 1
+        @setFileVersion data.file,version
+        @setFileSize data.file,content.length
+        if data.properties?
+          @setFileProperties data.file,data.properties
 
-      if data.request_id?
-        session.send
-          name: "write_project_file"
-          version: version
-          size: content.length
-          request_id: data.request_id
+        if data.request_id?
+          session.send
+            name: "write_project_file"
+            version: version
+            size: content.length
+            request_id: data.request_id
 
-      @propagateFileChange(session,data.file,version,data.content,data.properties)
-      @project.touch()
+        @propagateFileChange(session,data.file,version,data.content,data.properties)
+        @project.touch()
 
     if data.thumbnail?
       th = new Buffer(data.thumbnail,"base64")
@@ -342,14 +354,15 @@ class @ProjectManager
 
   renameProjectFile:(session,data)->
     return if not @canWrite session.user
-    return if not data.source?
-    return if not data.dest?
+    return if typeof data.source != "string"
+    return if typeof data.dest != "string"
+    return if data.dest.length>250
 
-    if not /^(ms|sprites|maps|sounds|music|doc|assets)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,4}.(ms|png|json|wav|mp3|md|glb|jpg)$/.test(data.source)
+    if not /^(ms|sprites|maps|sounds|music|doc|assets)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|md|glb|obj|jpg|ttf|txt|csv)$/.test(data.source)
       console.info "wrong source name: #{data.source}"
       return
 
-    if not /^(ms|sprites|maps|sounds|music|doc|assets)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,4}.(ms|png|json|wav|mp3|md|glb|jpg)$/.test(data.dest)
+    if not /^(ms|sprites|maps|sounds|music|doc|assets)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|md|glb|obj|jpg|ttf|txt|csv)$/.test(data.dest)
       console.info "wrong dest name: #{data.dest}"
       return
 
@@ -359,6 +372,8 @@ class @ProjectManager
     @project.content.files.read source,"binary",(content)=>
       if content?
         @project.content.files.write dest,content,()=>
+          @setFileProperties data.dest,@getFileProperties(data.source)
+          @setFileVersion data.dest,@getFileVersion(data.source)
           @project.deleteFileInfo(data.source)
           @setFileSize data.dest,content.length
           @project.touch()
@@ -377,11 +392,12 @@ class @ProjectManager
               @project.content.files.read source,"binary",(thumbnail)=>
                 if thumbnail?
                   @project.content.files.write dest,thumbnail,()=>
-                    session.send
-                      name: "rename_project_file"
-                      request_id: data.request_id
-                    @propagateFileDeleted(session,data.source)
-                    @propagateFileChange(session,data.dest,0,null,{})
+                    @project.content.files.delete source,()=>
+                      session.send
+                        name: "rename_project_file"
+                        request_id: data.request_id
+                      @propagateFileDeleted(session,data.source)
+                      @propagateFileChange(session,data.dest,0,null,{})
 
             else
               session.send
@@ -424,17 +440,27 @@ class @ProjectManager
         filename = files.splice(0,1)[0]
         value = contents.files[filename]
 
-        if /^(ms|sprites|maps|sounds|music|doc|assets|sounds_th|music_th|assets_th)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,4}.(ms|png|json|wav|mp3|md|glb|jpg)$/.test(filename)
-          type = if filename.split(".")[1] in ["ms","json","md"] then "string" else "nodebuffer"
+        if /^(ms|sprites|maps|sounds|music|doc|assets|sounds_th|music_th|assets_th)\/[a-z0-9_]{1,40}([-\/][a-z0-9_]{1,40}){0,10}.(ms|py|js|lua|png|json|wav|mp3|md|glb|obj|jpg|ttf|txt|csv)$/.test(filename)
+          dest = filename
+          d = dest.split("/")
+          while d.length>2
+            end = d.splice(d.length-1,1)[0]
+            d[d.length-1] += "-#{end}"
+            dest = d.join("/")
+
+          if dest.endsWith ".js" then dest = dest.replace(".js",".ms")
+          if dest.endsWith ".py" then dest = dest.replace(".py",".ms")
+          if dest.endsWith ".lua" then dest = dest.replace(".lua",".ms")
+          type = if dest.split(".")[1] in ["ms","json","md","txt","csv"] then "string" else "nodebuffer"
           try
             contents.file(filename).async(type).then ((fileContent)=>
               if fileContent?
-                @project.content.files.write "#{@project.owner.id}/#{@project.id}/#{filename}", fileContent, funk
+                @project.content.files.write "#{@project.owner.id}/#{@project.id}/#{dest}", fileContent, funk
               else
                 funk()
             ),()=>
               funk()
-              
+
           catch err
             console.error err
             console.log filename
@@ -444,6 +470,68 @@ class @ProjectManager
           funk()
       else
         callback()
+    funk()
+
+  syncFiles:(session,data,source)->
+    ops = data.ops
+    return if not @canWrite session.user
+    return if not Array.isArray ops
+
+    syncFile = (f,callback)=>
+      file = "#{source.owner.id}/#{source.id}/#{f}"
+
+      source.content.files.read file,"binary",(content)=>
+        if content?
+          file = "#{@project.owner.id}/#{@project.id}/#{f}"
+          @project.content.files.write file,content,()=>
+            callback() if callback?
+
+          if f.startsWith("assets/") or f.startsWith("sounds/") or f.startsWith("music/")
+            th = f.split("/")
+            th[0] += "_th"
+            th[1] = th[1].split(".")[0]+".png"
+            f = th.join("/")
+
+            file = "#{source.owner.id}/#{source.id}/#{f}"
+            source.content.files.read file,"binary",(content)=>
+              if content?
+                file = "#{@project.owner.id}/#{@project.id}/#{f}"
+                @project.content.files.write file,content,()=>
+
+        else
+          callback() if callback?
+
+    funk = ()=>
+      if ops.length > 0
+        op = ops.splice(0,1)[0]
+
+        return if not (op.file? and op.file.path? and op.file.version? and op.file.size?)
+
+        if op.op == "sync"
+          f = op.file
+          syncFile f.path,()=>
+            @setFileVersion f.path,f.version
+            @setFileSize f.path,f.size
+            if f.properties?
+              @setFileProperties f.path,f.properties
+            funk()
+            @propagateFileChange null,f.path,f.version,undefined,f.properties or {}
+        else if op.op == "delete"
+          f = op.file
+          file = "#{@project.owner.id}/#{@project.id}/#{f.path}"
+
+          @project.content.files.delete file,()=>
+            @project.deleteFileInfo(f.path)
+            funk()
+            @propagateFileDeleted null,f.path
+      else
+        session.send
+          name: "sync_project_files"
+          status: "done"
+          request_id: data.request_id
+
+        @project.touch()
+
     funk()
 
 module.exports = @ProjectManager

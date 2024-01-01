@@ -4,7 +4,6 @@
   width: 400px ;
   top: 0 ;
   bottom: 0 ;
-  border-top: solid 40px hsl(200,30%,30%);
   overflow: hidden ;
 }
 
@@ -136,9 +135,12 @@
   position: absolute ;
   left: 58px ;
   top: 0 ;
-  bottom: 0 ;
+  /* Space for spritehelpers */
+  bottom: 60px ;
   right: 0 ;
   padding: 8px ;
+  overflow-x: hidden ;
+  overflow-y: auto ;
 }
 
 .spritetooloptions input {
@@ -175,7 +177,7 @@
   font-size: 18px ;
 }
 
-.spritetoolbutton.selected {
+.spritetoolbutton.selected , .spritetoolbutton:active {
   background: rgba(255,255,255,.8);
   color: rgba(0,0,0,.8);
 }
@@ -183,6 +185,11 @@
 .spritetooloptions .toolbox .spritetoolbutton.selected {
   background: hsl(200,50%,50%);
   color: #FFF;
+}
+
+.spritetoolbutton.transform {
+  display: block ;
+  width: auto ;
 }
 
 
@@ -267,7 +274,7 @@
   right: 222px ;
   left: 2px ;
   top: 42px ;
-  bottom: 122px ;
+  bottom: 162px ;
 }
 .spriteeditor {
   position: absolute;
@@ -326,7 +333,7 @@
   margin-right: 10px ;
 }
 #spriteeditorcontainer.expanded {
-  bottom: 2px ;
+  bottom: 42px ;
 }
 #sprite-editor-locked {
   position: absolute ;
@@ -350,7 +357,7 @@
 /*  margin-top: 20px;*/
 }
 .colorpicker canvas {
-  /*width: 100% ;*/
+  width: 100% ;
   cursor: pointer ;
 }
 .spriteeditor canvas {
@@ -411,11 +418,11 @@
   text-align: center;
   background: hsla(200,40%,80%,.8);
   box-sizing: border-box;
-  width: 146px ;
   border-radius: 5px;
   border: none ;
   padding: 5px 5px 5px 10px ;
   font-family: 'Ubuntu Mono';
+  width: 145px ;
 }
 .colortext input:focus {
   border: none ;
@@ -434,14 +441,15 @@
 }
 
 #colorpicker-group .spritetoolbutton {
-  width: 140px ;
+  width: 100% ;
+  box-sizing: border-box ;
   margin: 2px 0 ;
 }
 #sprite-animation-panel {
   position: absolute;
   left: 2px ;
   right: 222px ;
-  bottom: 0px ;
+  bottom: 40px ;
   height: 120px ;
   background: hsl(200,40%,20%);
   text-align: center ;
@@ -456,7 +464,7 @@
   position: absolute;
   left: 10px;
   padding: 7px 10px;
-  bottom: 110px;
+  bottom: 150px;
   height: 14px;
   text-align: left;
   font-size: 12px;
@@ -470,7 +478,7 @@
   box-shadow: 0 -1px 1px #000;
 }
 #sprite-animation-title.collapsed {
-  bottom: 10px ;
+  bottom: 50px ;
   background: hsl(200,50%,50%);
   padding: 3px 10px;
   box-shadow: 0 0 1px #000;
@@ -628,6 +636,9 @@
   border-radius: 3px ;
   padding: 5px 10px ;
 }
+.selection-actions {
+  text-align: center ;
+}
 
 .auto-palette {
   padding: 5px;
@@ -684,4 +695,19 @@
   box-shadow: 0 0 2px #000 inset ;
   display: inline-block ;
   cursor: pointer ;
+}
+
+#spriteeditor-bottombar {
+  position: absolute;
+  right: 220px ;
+  left: 0px ;
+  border-left: solid 2px #000 ;
+  border-right: solid 2px #000 ;
+  bottom: 0 ;
+  height: 38px ;
+  background: hsl(200,30%,30%);
+  text-align: left ;
+  padding: 0 10px ;
+  white-space: nowrap ;
+  overflow: hidden ;
 }

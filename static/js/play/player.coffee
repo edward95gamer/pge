@@ -1,9 +1,11 @@
 class @Player
-  constructor:()->
+  constructor:(@listener)->
     #src = document.getElementById("code").innerText
     @source_count = 0
     @sources = {}
     @resources = resources
+    @request_id = 1
+    @pending_requests = {}
     if resources.sources?
       for source in resources.sources
         @loadSource(source)
@@ -68,6 +70,8 @@ class @Player
         @runtime.update_memory = {}
         for file,src of @runtime.sources
           @runtime.updateSource(file,src,false)
+      else if @runtime.stopped
+        @runtime.drawCall()
 
   setFullScreen:()->
     if document.documentElement.webkitRequestFullScreen? and not document.webkitIsFullScreen
@@ -92,21 +96,32 @@ class @Player
       name:"log"
       data: text
 
+  codePaused:()->
+    @postMessage
+      name:"code_paused"
+
+  exit:()->
+    @postMessage
+      name: "exit"
+
   messageReceived:(msg)->
     data = msg.data
     try
       data = JSON.parse data
       switch data.name
         when "command"
-          res = @runtime.runCommand data.line
-          if not data.line.trim().startsWith("print")
-            @postMessage
-              name: "output"
-              data: res
-              id: data.id
+          @runtime.runCommand data.line,(res)=>
+            if not data.line.trim().startsWith("print")
+              @postMessage
+                name: "output"
+                data: res
+                id: data.id
 
         when "pause"
           @runtime.stop()
+
+        when "step_forward"
+          @runtime.stepForward()
 
         when "resume"
           @runtime.resume()
@@ -126,16 +141,59 @@ class @Player
           file = data.file
           @runtime.updateMap(file,0,data.data)
 
+        when "take_picture"
+          @runtime.screen.takePicture (pic)=>
+            @postMessage
+              name: "picture_taken"
+              data: pic
+
+          if @runtime.stopped
+            @runtime.drawCall()
+
+        when "time_machine"
+          @runtime.time_machine.messageReceived data
+
+        when "watch"
+          @runtime.watch(data.list)
+
+        when "stop_watching"
+          @runtime.stopWatching()
+
+        else
+          if data.request_id?
+            if @pending_requests[data.request_id]?
+              @pending_requests[data.request_id](data)
+              delete @pending_requests[data.request_id]
+
     catch err
       console.error err
+
+
+  call:(name,args)->
+    if @runtime? and @runtime.vm?
+      @runtime.vm.call(name,args)
+
+  setGlobal:(name,value)->
+    if @runtime? and @runtime.vm?
+      @runtime.vm.context.global[name] = value
+
+  exec:(command,callback)->
+    if @runtime?
+      @runtime.runCommand command,callback
 
   postMessage:(data)->
     if window != window.parent
       window.parent.postMessage JSON.stringify(data),"*"
+    if @listener?
+      try
+        @listener(data)
+      catch err
+        console.error err
 
-window.addEventListener "load",()->
-  window.player = new Player()
-  document.body.focus()
+  postRequest:(data,callback)->
+    data.request_id = @request_id
+    @pending_requests[@request_id++] = callback
+    @postMessage(data)
 
 if navigator.serviceWorker? and not window.skip_service_worker
   navigator.serviceWorker.register('sw.js', { scope: location.pathname }).then((reg)->

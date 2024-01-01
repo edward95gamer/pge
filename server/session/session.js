@@ -143,6 +143,11 @@ this.Session = (function() {
         return _this.setProjectOption(msg);
       };
     })(this));
+    this.register("set_project_property", (function(_this) {
+      return function(msg) {
+        return _this.setProjectProperty(msg);
+      };
+    })(this));
     this.register("set_project_public", (function(_this) {
       return function(msg) {
         return _this.setProjectPublic(msg);
@@ -218,6 +223,11 @@ this.Session = (function() {
         return _this.getFileVersions(msg);
       };
     })(this));
+    this.register("sync_project_files", (function(_this) {
+      return function(msg) {
+        return _this.syncProjectFiles(msg);
+      };
+    })(this));
     this.register("invite_to_project", (function(_this) {
       return function(msg) {
         return _this.inviteToProject(msg);
@@ -236,6 +246,16 @@ this.Session = (function() {
     this.register("get_public_projects", (function(_this) {
       return function(msg) {
         return _this.getPublicProjects(msg);
+      };
+    })(this));
+    this.register("get_public_plugins", (function(_this) {
+      return function(msg) {
+        return _this.getPublicPlugins(msg);
+      };
+    })(this));
+    this.register("get_public_libraries", (function(_this) {
+      return function(msg) {
+        return _this.getPublicLibraries(msg);
       };
     })(this));
     this.register("get_public_project", (function(_this) {
@@ -328,6 +348,16 @@ this.Session = (function() {
         return _this.tutorialCompleted(msg);
       };
     })(this));
+    this.register("set_project_approved", (function(_this) {
+      return function(msg) {
+        return _this.setProjectApproved(msg);
+      };
+    })(this));
+    this.register("set_user_approved", (function(_this) {
+      return function(msg) {
+        return _this.setUserApproved(msg);
+      };
+    })(this));
     ref = this.server.plugins;
     for (j = 0, len1 = ref.length; j < len1; j++) {
       plugin = ref[j];
@@ -398,19 +428,25 @@ this.Session = (function() {
   };
 
   Session.prototype.disconnected = function() {
-    if ((this.project != null) && (this.project.manager != null)) {
-      this.project.manager.removeUser(this);
-      this.project.manager.removeListener(this);
-    }
-    if (this.user != null) {
-      return this.user.removeListener(this);
+    var err;
+    try {
+      if ((this.project != null) && (this.project.manager != null)) {
+        this.project.manager.removeSession(this);
+        this.project.manager.removeListener(this);
+      }
+      if (this.user != null) {
+        return this.user.removeListener(this);
+      }
+    } catch (error1) {
+      err = error1;
+      return console.error(err);
     }
   };
 
   Session.prototype.setCurrentProject = function(project) {
     if (project !== this.project || (this.project.manager == null)) {
       if ((this.project != null) && (this.project.manager != null)) {
-        this.project.manager.removeUser(this);
+        this.project.manager.removeSession(this);
       }
       this.project = project;
       if (this.project.manager == null) {
@@ -563,6 +599,7 @@ this.Session = (function() {
       this.user.setFlag("newsletter", data.newsletter);
       this.user.set("hash", hash);
       this.user.resetValidationToken();
+      this.user.updateTier();
     } else {
       this.user = this.content.createUser({
         nick: data.nick,
@@ -683,7 +720,7 @@ this.Session = (function() {
       this.logActiveUser();
     }
     token = this.content.findToken(data.token);
-    if (token != null) {
+    if ((token != null) && (token.user != null) && !token.user.flags.deleted) {
       this.user = token.user;
       this.user.addListener(this);
       this.send({
@@ -714,6 +751,36 @@ this.Session = (function() {
       error: error,
       request_id: request_id
     });
+  };
+
+  Session.prototype.syncProjectFiles = function(data) {
+    var dest, source;
+    if (data.request_id == null) {
+      return this.sendError("Bad request");
+    }
+    if (this.user == null) {
+      return this.sendError("not connected", data.request_id);
+    }
+    if (data.source == null) {
+      return this.sendError("bad request", data.request_id);
+    }
+    if (data.dest == null) {
+      return this.sendError("bad request", data.request_id);
+    }
+    if (data.ops == null) {
+      return this.sendError("bad request", data.request_id);
+    }
+    dest = this.content.projects[data.dest];
+    if (dest != null) {
+      this.setCurrentProject(dest);
+      source = this.content.projects[data.source];
+      if (source != null) {
+        if (!dest.manager.canReadProject(this.user, source)) {
+          return this.sendError("access denied", data.request_id);
+        }
+        return dest.manager.syncFiles(this, data, source);
+      }
+    }
   };
 
   Session.prototype.importProject = function(data) {
@@ -816,11 +883,15 @@ this.Session = (function() {
           clone.setType(project.type);
           clone.setOrientation(project.orientation);
           clone.setAspect(project.aspect);
+          clone.set("language", project.language);
           clone.setGraphics(project.graphics);
           clone.set("libs", project.libs);
+          clone.set("tabs", project.tabs);
+          clone.set("plugins", project.plugins);
+          clone.set("libraries", project.libraries);
           clone.set("files", JSON.parse(JSON.stringify(project.files)));
           man = _this.getProjectManager(project);
-          folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "doc"];
+          folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "assets", "assets_th", "doc"];
           files = [];
           funk = function() {
             var dest, f, folder, src;
@@ -883,11 +954,15 @@ this.Session = (function() {
             clone.setType(project.type);
             clone.setOrientation(project.orientation);
             clone.setAspect(project.aspect);
+            clone.set("language", project.language);
             clone.setGraphics(project.graphics);
             clone.set("libs", project.libs);
+            clone.set("tabs", project.tabs);
+            clone.set("plugins", project.plugins);
+            clone.set("libraries", project.libraries);
             clone.set("files", JSON.parse(JSON.stringify(project.files)));
             man = _this.getProjectManager(project);
-            folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "doc"];
+            folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "assets", "assets_th", "doc"];
             files = [];
             funk = function() {
               var dest, f, folder, src;
@@ -962,6 +1037,50 @@ this.Session = (function() {
           name: "set_project_public",
           id: project.id,
           "public": project["public"],
+          request_id: data.request_id
+        });
+      }
+    }
+  };
+
+  Session.prototype.setProjectApproved = function(data) {
+    var project;
+    if (this.user == null) {
+      return;
+    }
+    if (data.project == null) {
+      return;
+    }
+    if (this.user.flags.admin || this.user.flags.moderator) {
+      project = this.content.projects[data.project];
+      if (project != null) {
+        project.setFlag("approved", data.approved);
+        return this.send({
+          name: "set_project_approved",
+          id: project.id,
+          approved: data.approved,
+          request_id: data.request_id
+        });
+      }
+    }
+  };
+
+  Session.prototype.setUserApproved = function(data) {
+    var user;
+    if (this.user == null) {
+      return;
+    }
+    if (data.user == null) {
+      return;
+    }
+    if (this.user.flags.admin || this.user.flags.moderator) {
+      user = this.content.users_by_nick[data.user];
+      if ((user != null) && !user.flags.admin && !user.flags.moderator) {
+        user.setFlag("approved", data.approved);
+        return this.send({
+          name: "set_project_approved",
+          user: data.user,
+          approved: data.approved,
           request_id: data.request_id
         });
       }
@@ -1052,9 +1171,24 @@ this.Session = (function() {
             project.set("libs", data.value);
           }
           break;
+        case "tabs":
+          if (typeof data.value === "object") {
+            project.set("tabs", data.value);
+          }
+          break;
+        case "plugins":
+          if (typeof data.value === "object") {
+            project.set("plugins", data.value);
+          }
+          break;
+        case "libraries":
+          if (typeof data.value === "object") {
+            project.set("libraries", data.value);
+          }
+          break;
         case "type":
           if (typeof data.value === "string") {
-            project.setType(data.value);
+            this.content.setProjectType(project, data.value);
           }
           break;
         case "orientation":
@@ -1068,16 +1202,37 @@ this.Session = (function() {
           }
           break;
         case "graphics":
-          if (this.user.flags.m3d) {
-            if (typeof data.value === "string") {
-              project.setGraphics(data.value);
-            }
+          if (typeof data.value === "string") {
+            project.setGraphics(data.value);
           }
+          break;
+        case "unlisted":
+          project.set("unlisted", data.value ? true : false);
+          break;
+        case "language":
+          project.set("language", data.value);
       }
       if (project.manager != null) {
         project.manager.propagateOptions(this);
       }
       return project.touch();
+    }
+  };
+
+  Session.prototype.setProjectProperty = function(data) {
+    var project;
+    if (this.user == null) {
+      return this.sendError("not connected");
+    }
+    if (data.project == null) {
+      return this.sendError("no project");
+    }
+    if (data.property == null) {
+      return this.sendError("no property");
+    }
+    project = this.user.findProject(data.project);
+    if (project != null) {
+      return project.setProperty(data.property, data.value);
     }
   };
 
@@ -1118,16 +1273,24 @@ this.Session = (function() {
           code: p.code,
           description: p.description,
           tags: p.tags,
+          flags: p.flags,
+          poster: (p.files != null) && (p.files["sprites/poster.png"] != null),
           platforms: p.platforms,
           controls: p.controls,
           type: p.type,
           orientation: p.orientation,
           aspect: p.aspect,
           graphics: p.graphics,
+          language: p.language,
           libs: p.libs,
+          tabs: p.tabs,
+          plugins: p.plugins,
+          libraries: p.libraries,
+          properties: p.properties,
           date_created: p.date_created,
           last_modified: p.last_modified,
           "public": p["public"],
+          unlisted: p.unlisted,
           size: p.getSize(),
           users: p.listUsers()
         });
@@ -1150,16 +1313,23 @@ this.Session = (function() {
           code: p.code,
           description: p.description,
           tags: p.tags,
+          flags: p.flags,
+          poster: (p.files != null) && (p.files["sprites/poster.png"] != null),
           platforms: p.platforms,
           controls: p.controls,
           type: p.type,
           orientation: p.orientation,
           aspect: p.aspect,
           graphics: p.graphics,
+          language: p.language,
           libs: p.libs,
+          tabs: p.tabs,
+          plugins: p.plugins,
+          libraries: p.libraries,
           date_created: p.date_created,
           last_modified: p.last_modified,
           "public": p["public"],
+          unlisted: p.unlisted,
           users: p.listUsers()
         });
       }
@@ -1350,7 +1520,7 @@ this.Session = (function() {
   };
 
   Session.prototype.getPublicProjects = function(data) {
-    var i, j, len1, list, p, source;
+    var found, i, j, k, l, len1, len2, len3, list, m, offset, p, ref, ref1, ref2, ref3, search, source, t, tags, type;
     switch (data.ranking) {
       case "new":
         source = this.content.new_projects;
@@ -1362,35 +1532,174 @@ this.Session = (function() {
         source = this.content.hot_projects;
     }
     list = [];
-    for (i = j = 0, len1 = source.length; j < len1; i = ++j) {
+    tags = Array.isArray(data.tags) ? data.tags : [];
+    search = typeof data.search === "string" ? data.search : "";
+    search = search.trim();
+    type = data.type || "all";
+    offset = data.offset || 0;
+    for (i = j = ref = offset, ref1 = source.length - 1; j <= ref1; i = j += 1) {
       p = source[i];
-      if (list.length >= 300) {
+      if (list.length >= 25) {
         break;
       }
+      offset = i + 1;
       if (p["public"] && !p.deleted && !p.owner.flags.censored) {
+        if (search) {
+          found = false;
+          found |= p.title.toLowerCase().includes(search);
+          found |= p.description.toLowerCase().includes(search);
+          found |= p.owner.nick.toLowerCase().includes(search);
+          ref2 = p.tags;
+          for (k = 0, len1 = ref2.length; k < len1; k++) {
+            t = ref2[k];
+            found |= t.includes(search);
+          }
+          if (!found) {
+            continue;
+          }
+        }
+        if (tags.length > 0) {
+          found = false;
+          for (l = 0, len2 = tags.length; l < len2; l++) {
+            t = tags[l];
+            if (p.tags.indexOf(t) >= 0) {
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            continue;
+          }
+        }
+        if (type !== "all" && p.type !== type) {
+          continue;
+        }
         list.push({
           id: p.id,
           title: p.title,
           description: p.description,
+          poster: (p.files != null) && (p.files["sprites/poster.png"] != null),
           type: p.type,
           tags: p.tags,
+          flags: p.flags,
           slug: p.slug,
           owner: p.owner.nick,
           owner_info: {
             tier: p.owner.flags.tier,
-            profile_image: p.owner.flags.profile_image
+            profile_image: p.owner.flags.profile_image,
+            approved: p.owner.flags.approved
           },
           likes: p.likes,
           liked: (this.user != null) && this.user.isLiked(p.id),
           tags: p.tags,
           date_published: p.first_published,
+          last_modified: p.last_modified,
           graphics: p.graphics,
-          libs: p.libs
+          language: p.language,
+          libs: p.libs,
+          tabs: p.tabs,
+          plugins: p.plugins,
+          libraries: p.libraries
         });
+      }
+    }
+    tags = [];
+    ref3 = this.content.sorted_tags;
+    for (m = 0, len3 = ref3.length; m < len3; m++) {
+      t = ref3[m];
+      tags.push(t.tag);
+      if (tags.length > 50) {
+        break;
       }
     }
     return this.send({
       name: "public_projects",
+      list: list,
+      tags: tags,
+      offset: offset,
+      request_id: data.request_id
+    });
+  };
+
+  Session.prototype.getPublicPlugins = function(data) {
+    var j, len1, list, p, source;
+    source = this.content.plugin_projects;
+    list = [];
+    for (j = 0, len1 = source.length; j < len1; j++) {
+      p = source[j];
+      if (p["public"] && !p.deleted && !p.owner.flags.censored) {
+        list.push({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          poster: (p.files != null) && (p.files["sprites/poster.png"] != null),
+          type: p.type,
+          tags: p.tags,
+          flags: p.flags,
+          slug: p.slug,
+          owner: p.owner.nick,
+          owner_info: {
+            tier: p.owner.flags.tier,
+            profile_image: p.owner.flags.profile_image,
+            approved: p.owner.flags.approved
+          },
+          likes: p.likes,
+          liked: (this.user != null) && this.user.isLiked(p.id),
+          date_published: p.first_published,
+          last_modified: p.last_modified,
+          graphics: p.graphics,
+          language: p.language,
+          libs: p.libs,
+          tabs: p.tabs,
+          plugins: p.plugins,
+          libraries: p.libraries
+        });
+      }
+    }
+    return this.send({
+      name: "public_plugins",
+      list: list,
+      request_id: data.request_id
+    });
+  };
+
+  Session.prototype.getPublicLibraries = function(data) {
+    var j, len1, list, p, source;
+    source = this.content.library_projects;
+    list = [];
+    for (j = 0, len1 = source.length; j < len1; j++) {
+      p = source[j];
+      if (p["public"] && !p.deleted && !p.owner.flags.censored) {
+        list.push({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          poster: (p.files != null) && (p.files["sprites/poster.png"] != null),
+          type: p.type,
+          tags: p.tags,
+          flags: p.flags,
+          slug: p.slug,
+          owner: p.owner.nick,
+          owner_info: {
+            tier: p.owner.flags.tier,
+            profile_image: p.owner.flags.profile_image,
+            approved: p.owner.flags.approved
+          },
+          likes: p.likes,
+          liked: (this.user != null) && this.user.isLiked(p.id),
+          date_published: p.first_published,
+          last_modified: p.last_modified,
+          graphics: p.graphics,
+          language: p.language,
+          libs: p.libs,
+          tabs: p.tabs,
+          plugins: p.plugins,
+          libraries: p.libraries
+        });
+      }
+    }
+    return this.send({
+      name: "public_libraries",
       list: list,
       request_id: data.request_id
     });
@@ -1409,20 +1718,27 @@ this.Session = (function() {
             id: p.id,
             title: p.title,
             description: p.description,
+            poster: (p.files != null) && (p.files["sprites/poster.png"] != null),
             type: p.type,
             tags: p.tags,
+            flags: p.flags,
             slug: p.slug,
             owner: p.owner.nick,
             owner_info: {
               tier: p.owner.flags.tier,
-              profile_image: p.owner.flags.profile_image
+              profile_image: p.owner.flags.profile_image,
+              approved: p.owner.flags.approved
             },
             likes: p.likes,
             liked: (this.user != null) && this.user.isLiked(p.id),
-            tags: p.tags,
             date_published: p.first_published,
+            last_modified: p.last_modified,
             graphics: p.graphics,
-            libs: p.libs
+            language: p.language,
+            libs: p.libs,
+            tabs: p.tabs,
+            plugins: p.plugins,
+            libraries: p.libraries
           };
           return this.send({
             name: "get_public_project",
@@ -1504,7 +1820,7 @@ this.Session = (function() {
   };
 
   Session.prototype.removeProjectUser = function(data) {
-    var j, k, len1, len2, li, link, project, ref, ref1, user;
+    var j, k, len1, len2, li, link, nick, project, ref, ref1, user;
     if (this.user == null) {
       return this.sendError("not connected");
     }
@@ -1514,19 +1830,18 @@ this.Session = (function() {
     if (project == null) {
       return this.sendError("project not found", data.request_id);
     }
-    if (data.user != null) {
-      user = this.content.findUserByNick(data.user);
+    nick = data.user;
+    if (nick == null) {
+      return;
     }
-    if (user == null) {
-      return this.sendError("user not found", data.request_id);
-    }
+    user = this.content.findUserByNick(nick);
     if (this.user !== project.owner && this.user !== user) {
       return;
     }
     ref = project.users;
     for (j = 0, len1 = ref.length; j < len1; j++) {
       link = ref[j];
-      if (link.user === user) {
+      if ((link != null) && (link.user != null) && link.user.nick === nick) {
         link.remove();
         if (this.user === project.owner) {
           this.setCurrentProject(project);
@@ -1539,10 +1854,12 @@ this.Session = (function() {
         if (project.manager != null) {
           project.manager.propagateUserListChange();
         }
-        ref1 = user.listeners;
-        for (k = 0, len2 = ref1.length; k < len2; k++) {
-          li = ref1[k];
-          li.getProjectList();
+        if (user != null) {
+          ref1 = user.listeners;
+          for (k = 0, len2 = ref1.length; k < len2; k++) {
+            li = ref1[k];
+            li.getProjectList();
+          }
         }
       }
     }

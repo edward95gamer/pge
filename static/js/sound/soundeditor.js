@@ -5,6 +5,7 @@ this.SoundEditor = (function(superClass) {
   extend(SoundEditor, superClass);
 
   function SoundEditor(app) {
+    var synth;
     this.app = app;
     SoundEditor.__super__.constructor.call(this, this.app);
     this.folder = "sounds";
@@ -14,19 +15,33 @@ this.SoundEditor = (function(superClass) {
     this.use_thumbnails = true;
     this.extensions = ["wav"];
     this.update_list = "updateSoundList";
-    this.box_width = 96;
-    this.box_height = 84;
     this.init();
+    synth = document.getElementById("open-synth");
+    synth.addEventListener("click", (function(_this) {
+      return function() {
+        if (_this.synth == null) {
+          _this.app.audio_controller.init();
+          _this.synth = new Synth(_this.app);
+          return _this.synth.synth_window.show();
+        } else {
+          if (_this.synth.synth_window.shown) {
+            return _this.synth.synth_window.close();
+          } else {
+            return _this.synth.synth_window.show();
+          }
+        }
+      };
+    })(this));
   }
 
   SoundEditor.prototype.update = function() {
+    var synth;
     SoundEditor.__super__.update.call(this);
-    if ((this.app.user != null) && this.app.user.flags.admin) {
-      if (this.synth == null) {
-        this.app.audio_controller.init();
-        this.synth = new Synth(this.app);
-        return this.synth.synth_window.show();
-      }
+    synth = document.getElementById("open-synth");
+    if (this.app.user && this.app.user.flags.experimental) {
+      return synth.style.display = "inline-block";
+    } else {
+      return synth.style.display = "none";
     }
   };
 
@@ -39,9 +54,30 @@ this.SoundEditor = (function(superClass) {
     }
   };
 
-  SoundEditor.prototype.fileDropped = function(file) {
+  SoundEditor.prototype.createAsset = function(folder) {
+    var input;
+    input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".wav";
+    input.addEventListener("change", (function(_this) {
+      return function(event) {
+        var f, files, i, len;
+        files = event.target.files;
+        if (files.length >= 1) {
+          for (i = 0, len = files.length; i < len; i++) {
+            f = files[i];
+            _this.fileDropped(f, folder);
+          }
+        }
+      };
+    })(this));
+    return input.click();
+  };
+
+  SoundEditor.prototype.fileDropped = function(file, folder) {
     var reader;
     console.info("processing " + file.name);
+    console.info("folder: " + folder);
     reader = new FileReader();
     reader.addEventListener("load", (function(_this) {
       return function() {
@@ -56,7 +92,13 @@ this.SoundEditor = (function(superClass) {
           console.info(decoded);
           thumbnailer = new SoundThumbnailer(decoded, 96, 64);
           name = file.name.split(".")[0];
-          name = _this.findNewFilename(name, "getSound");
+          name = _this.findNewFilename(name, "getSound", folder);
+          if (folder != null) {
+            name = folder.getFullDashPath() + "-" + name;
+          }
+          if (folder != null) {
+            folder.setOpen(true);
+          }
           sound = _this.app.project.createSound(name, thumbnailer.canvas.toDataURL(), reader.result.length);
           sound.uploading = true;
           _this.setSelectedItem(name);

@@ -1,11 +1,20 @@
+.code-right {
+  position: absolute ;
+  right: 0px ;
+  width: 400px ;
+  top: 0 ;
+  bottom: 0 ;
+}
+
 .editor-view,#editor-view {
   position: absolute ;
-  top: 40px ;
+  top: 42px ;
   bottom: 0px ;
-  left: 40px ;
+  left: 0px ;
   right: 0 ;
-  transition-duration: .5s ;
-  transition-property: left ;
+  transition-duration: .5s , 1s ;
+  transition-property: left, opacity ;
+  opacity: 1 ;
 }
 #editor-locked {
   position: absolute ;
@@ -15,12 +24,14 @@
   padding: 20px ;
   z-index: 100 ;
   height: 20px ;
-  transition-duration: .5s ;
-  transition-property: left ;
+  transition-duration: .5s, 1s ;
+  transition-property: left, opacity ;
   border-radius: 10px ;
   color: #FFF ;
   font-size: 16px ;
+  opacity: 1 ;
   display: none ;
+  pointer-events: none ;
 }
 #editor-locked i {
   margin-right: 5px ;
@@ -84,6 +95,40 @@
 .runbar .buttons div:active,.runtime-splitbar .buttons div:active  {
   background: hsl(160,30%,30%);
 }
+.runbar .buttons img {
+  width: 24px ;
+  height: 24px ;
+  vertical-align: middle;
+}
+
+#qrcode-button {
+  margin-left: 20px ;
+  border-radius: 5px ;
+  background: hsl(200,50%,40%) ;
+  position: relative ;
+  top: -2px ;
+  padding: 5px ;
+}
+
+#qrcode-button:hover, #run-link:hover {
+  background: hsl(200,50%,50%) ;
+}
+
+#take-picture-button {
+  display: none ;
+  margin-left: 20px;
+  border-radius: 50px;
+  background: rgba(0,0,0,.2);
+  padding: 6px;
+  width: 20px;
+  height: 20px;
+  text-align: center;
+}
+
+#take-picture-button:hover {
+  background:rgba(255,255,255,.2);
+}
+
 
 .runbar .buttons .selected,.runtime-splitbar .buttons .selected,
 .runbar .buttons div.selected:hover,.runtime-splitbar .buttons div.selected:hover
@@ -97,7 +142,7 @@
   padding: 4px 12px ;
   border-radius: 14px ;
   background: hsl(200,50%,40%);
-  margin-left: 40px ;
+  margin-left: 20px ;
   white-space: nowrap ;
   overflow: hidden ;
   cursor: pointer ;
@@ -130,38 +175,27 @@ a#run-link {
   left: 0px ;
   top: 100px ;
   right: 0 ;
-  height: 40px ;
+  height: 12px ;
+  border-bottom: solid 2px #000 ;
   transition-property: height ;
   transition-duration: 0.5s ;
   cursor: ns-resize;
   z-index: 3 ;
   overflow: hidden ;
   white-space: nowrap;
+  box-sizing: border-box ;
 }
 
 .runtime-splitbar span {
   margin-left: 20px ;
 }
 
-#console-options {
-  background: rgba(0,0,0,.2);
-  display: block ;
-  padding: 20px ;
-  line-height: 25px ;
-  white-space: nowrap;
-  color: rgba(255,255,255,.8);
-}
-
-#console-options label {
-  margin-left: 5px ;
-}
-
 .devicecontainer {
   position: absolute ;
-  top: 40px ;
-  left: 0 ;
-  right: 0 ;
-  bottom: 0 ;
+  top: 42px ;
+  left: 2px ;
+  right: 2px ;
+  bottom: 2px ;
 }
 #device {
   position: absolute ;
@@ -185,25 +219,54 @@ a#run-link {
   left: 0 ;
   right: 0 ;
   pointer-events: none ;
+  text-align: center;
+}
+#ruler canvas {
+  display: inline-block ;
 }
 .help-window {
   position: absolute;
-  right: 5px ;
+  right: 20px ;
   bottom: 5px ;
-  background: hsl(30,100%,90%);
-  border-radius: 20px ;
-  padding: 10px ;
   color: hsl(20,20%,20%);
   z-index: 4 ;
   margin-left: 5px ;
+  cursor: pointer ;
+  width: 40px ;
+  height: 40px ;
+}
+#help-window-content {
+  position: absolute ;
+  bottom: 0px ;
+  background: hsl(30,100%,90%);
+  border-radius: 20px ;
+  padding: 10px ;
   overflow: hidden ;
   min-height: 20px ;
   min-width: 20px ;
-  cursor: pointer ;
+  width: 20px ;
 }
 
-.help-window.disabled {
+#help-window-content.displaycontent {
+  width: 450px ;
+  left: 75px ;
+  bottom:40px ;
+}
+
+.help-window.disabled #help-window-content {
   background: hsl(20,0%,60%);
+  bottom: 0px ;
+  left: 0px ;
+  width: 20px ;
+}
+#help-window-content .content {
+  display: none ;
+}
+#help-window-content.displaycontent .content {
+  display: block ;
+}
+.help-window.disabled #help-window-content .content {
+  display: none ;
 }
 
 .help-window i {
@@ -249,11 +312,32 @@ a#run-link {
   margin-right: 4px ;
 }
 
+#source-asset-bar .language {
+  border-radius: 10px ;
+  background-color: rgba(0,0,0,.3) ;
+  color: rgba(255,255,255,.7);
+  font-size: 11px ;
+  padding: 3px 8px ;
+  margin-left: 10px ;
+  font-family: "Ubuntu Mono";
+  position: relative ;
+  top: -2px;
+}
+#source-asset-bar .language.python {
+  background-color: hsl(160,40%,40%) ;
+}
+#source-asset-bar .language.lua {
+  background-color: hsl(20,40%,40%) ;
+}
+#source-asset-bar .language.javascript {
+  background-color: hsl(300,40%,40%) ;
+}
+#source-asset-bar .language.microscript {
+  background-color: hsl(200,40%,40%) ;
+}
+
 .code-tools {
-  position: absolute ;
-  right: 2px ;
-  top: 0px ;
-  height: 40px ;
+  display: inline-block ;
 }
 
 .code-tools .buttons {
@@ -340,7 +424,32 @@ a#run-link {
 #color-value-tool-button {
   display: none ;
 }
-
+#sourcelist {
+  bottom: 34px ;
+}
+#manage-libs-button {
+  position: absolute ;
+  bottom: 3px ;
+  left: 2px ;
+  right: 2px ;
+  border-radius: 5px ;
+  color: rgba(255,255,255,.75) ;
+  padding: 5px 10px ;
+  text-align: left ;
+  cursor: pointer ;
+  font-size: 14px ;
+  white-space: nowrap ;
+  overflow: hidden ;
+}
+#manage-libs-button:hover {
+  background: hsl(200,30%,30%);
+}
+#manage-libs-button.selected {
+  background: hsl(200,30%,30%);
+}
+#manage-libs-button i {
+  margin-right: 10px ;
+}
 .source-list-panel {
   position: absolute ;
   top: 40px ;
@@ -486,7 +595,7 @@ a#run-link {
   border-radius: 5px ;
   position: fixed ;
 }
-.value-tool input {
+.value-tool input[type="range"] {
   width: 300px ;
 }
 .value-tool .colortext {
@@ -521,4 +630,91 @@ a#run-link {
 }
 .ace-tomorrow-night-bright .ace_marker-layer .ace_selection {
     background: #584848;
+}
+
+.show-picture {
+  background: white ;
+  border-radius: 5px ;
+  padding: 10px ;
+  text-align: center ;
+}
+
+.show-picture div {
+  display: inline-block ;
+  margin: 10px 0 0 0 ;
+  background: hsl(200,50%,40%);
+  color: white ;
+  border-radius: 5px ;
+  padding: 5px 10px ;
+  cursor: pointer ;
+}
+.show-picture div.save {
+  background: hsl(160,50%,40%);
+}
+
+.show-picture div.close {
+  background: hsl(0,50%,40%);
+}
+
+
+#runtime-left {
+  position: absolute ;
+  top: 0 ;
+  left: 0 ;
+  bottom: 0 ;
+}
+
+.code-toolbar,#code-toolbar {
+  position: absolute ;
+  top: 0px ;
+  left: 0px ;
+  right: 0px ;
+  height: 40px ;
+  padding: 0px 20px ;
+  padding-left: 0px ;
+  transition-property: padding-left ;
+  transition-duration: .5s ;
+  background: hsl(200,30%,30%);
+  overflow: hidden ;
+}
+#code-toolbar i {
+  margin-right: 5px ;
+}
+.code-toolbar .delete {
+  padding: 4px 8px ;
+  border-radius: 4px ;
+  background: hsl(0,50%,50%);
+  cursor: pointer ;
+}
+.code-toolbar #delete-source i {
+  margin: 0 ;
+}
+
+.lib-manager-container {
+  position: absolute ;
+  top: 42px ;
+  left: 2px ;
+  right: 2px ;
+  bottom: 2px ;
+  background: hsl(200,20%,20%) ;
+  z-index: 4 ;
+  padding: 40px ;
+  overflow: auto ;
+  display: none ;
+}
+
+.lib-box .docbutton {
+  background: rgba(0,0,0,.5) ;
+  padding: 5px 10px ;
+  border-radius: 5px ;
+  display: inline-block ;
+  margin-right: 10px ;
+  margin-top: 5px ;
+  font-size: 14px ;
+}
+.lib-box .docbutton i {
+  margin-right: 5px ;
+}
+.lib-box > div > a.docbutton {
+  color: rgba(255,255,255,.8) ;
 }

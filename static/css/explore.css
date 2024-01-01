@@ -5,9 +5,10 @@
 .exploreview i {
   margin-right: 10px ;
 }
+
 #explore-contents {
   position: absolute ;
-  top: 40px ;
+  top: 100px ;
   bottom: 0px ;
   left: 0 ;
   right: 0 ;
@@ -17,24 +18,29 @@
 
 #explore-box-list {
   text-align: center ;
+  padding-top: 20px ;
 }
 .explore-project-box {
   position: relative ;
-  margin: 20px ;
-  padding: 10px ;
+  margin: 10px ;
+  padding: 0px ;
   display: inline-block ;
   cursor: pointer ;
   border-radius: 10px ;
-  width: 200px ;
+  width: 320px ;
+  overflow: hidden ;
+  text-align: center ;
+  background: rgba(255,255,255,.05);
+  box-shadow: 0 0 10px rgba(0,0,0,.5) ;
 }
 .explore-project-box:hover {
-  box-shadow: 0 0 10px rgba(0,0,0,.5) ;
-  background: rgba(255,255,255,.1);
+  box-shadow: 0 0 10px rgba(0,0,0,1) ;
+  background: rgba(255,255,255,.15);
 }
 .explore-project-box .project-tag {
   position: absolute;
   right: 5px;
-  top: 200px;
+  top: 180px;
   color: #FFF;
   background: hsl(200,50%,40%);
   padding: 2px 8px;
@@ -45,9 +51,28 @@
 }
 
 .explore-project-box .icon {
+  display: inline-block ;
+  width:170px ;
+  height: 170px ;
+  margin-top: 10px ;
+  background: #000 ;
+}
+
+.explore-project-box .smallicon {
+  position: absolute ;
+  left: 10px ;
+  top: 130px ;
+  box-shadow: 0 0 10px 1px #000 ;
+  border-radius: 5px ;
+  width: 64px ;
+  height: 64px ;
+  background: #000 ;
+}
+
+.explore-project-box .poster {
   display: block ;
-  width:200px ;
-  height: 200px ;
+  width:320px ;
+  height: 180px ;
 }
 
 .explore-project-box i {
@@ -60,7 +85,7 @@
 .explore-project-box .run-button {
   background: hsl(160,50%,40%);
   padding: 8px 16px ;
-  border-radius: 5px ;
+  margin-top: 16px ;
 }
 .explore-project-box .run-button i {
   margin-right: 10px ;
@@ -73,12 +98,48 @@
 }
 
 .explore-project-title {
-  color: #FFF ;
-  font-size: 24px ;
-  margin: 5px 0 15px 0 ;
+  color: rgba(255,255,255,.8) ;
+  font-size: 20px ;
+  font-family: Ubuntu ;
+  margin: 20px 0 15px 0 ;
   white-space: nowrap ;
   text-align: center ;
   overflow: hidden ;
+}
+
+.explore-project-box .usertag {
+  left: 20px ;
+}
+
+.explore-project-box .type-label {
+  position: absolute ;
+  top: 0 ;
+  right: 0 ;
+  padding: 5px 10px ;
+  border-bottom-left-radius: 10px ;
+  background: #000 ;
+  font-size: 14px ;
+  box-shadow: 0 0 5px #000 ;
+}
+.explore-project-box .type-label.library {
+  background: hsl(160,50%,50%) ;
+}
+.explore-project-box .type-label.plugin {
+  background: hsl(200,50%,50%) ;
+}
+.explore-project-box .type-label.tutorial {
+  background: hsl(300,50%,50%) ;
+}
+
+.explore-project-box .awaiting-label {
+  position: absolute ;
+  top: 0 ;
+  left: 0 ;
+  padding: 5px 10px ;
+  border-bottom-right-radius: 10px ;
+  background: #000 ;
+  font-size: 14px ;
+  box-shadow: 0 0 5px #000 ;
 }
 
 .explore-project-button {
@@ -102,7 +163,7 @@
   margin: 20px 0 ;
   cursor: pointer ;
   position: absolute ;
-  top: 250px ;
+  top: 220px ;
   right: 10px ;
 }
 
@@ -118,6 +179,22 @@
   right: 0 ;
   padding: 5px ;
   vertical-align: middle ;
+}
+
+#explore-tags-bar {
+  position: absolute ;
+  top: 50px ;
+  left: 0 ;
+  right: 0 ;
+  padding: 5px ;
+  vertical-align: middle ;
+  overflow: hidden ;
+  z-index: 1 ;
+  background: hsl(330,30%,30%);
+  border-bottom: solid 2px hsl(200,10%,10%);
+}
+#explore-tags-bar.collapsed {
+  height: 30px ;
 }
 #explore-back-button {
   display: none ;
@@ -150,7 +227,38 @@
   background: hsl(200,50%,50%);
 }
 #explore-sort-button i {
-  margin-right: 5px ;
+  margin-right: 10px ;
+}
+#explore-type-button {
+  background: hsl(200,50%,50%);
+  border-radius: 3px ;
+  padding: 4px 8px ;
+  font-size: 16px ;
+  margin-left: 12px ;
+  margin-top: 1px ;
+  cursor: pointer ;
+}
+
+#explore-type-button.all i:before { content: "\f009" ; }
+#explore-type-button.app i:before { content: "\f11b" ; }
+#explore-type-button.library i:before { content: "\f1c9" ; }
+#explore-type-button.plugin i:before { content: "\f1e6" ; }
+#explore-type-button.tutorial i:before { content: "\f19d" ; }
+
+#explore-type-button.app {
+  background: hsl(0,50%,50%);
+}
+#explore-type-button.library {
+  background: hsl(160,50%,50%);
+}
+#explore-type-button.plugin {
+  background: hsl(200,50%,50%);
+}
+#explore-type-button.tutorial {
+  background: hsl(300,50%,50%);
+}
+#explore-type-button i {
+  margin-right: 10px ;
 }
 #explore-search {
   position: absolute ;
@@ -180,20 +288,22 @@
       font-size: 16px;
 }
 #explore-tags {
+  padding-left: 40px ;
+}
+#explore-tags-collapse {
   position: absolute ;
-  left: 150px ;
-  right: 200px ;
-  top: 0 ;
-  bottom: 0 ;
-  white-space: nowrap ;
-  overflow: hidden;
+  left: 5px ;
+  top: 0px ;
+  padding: 10px ;
+  cursor: pointer ;
+  font-size: 20px ;
 }
 #explore-tags div {
   display: inline-block ;
   border-radius: 20px ;
   padding: 3px 8px ;
-  margin: 10px 2px ;
-  background: rgba(255,255,255,.1);
+  margin: 5px 2px ;
+  background: rgba(255,255,255,.2);
   color: #FFF ;
   cursor: pointer ;
   font-size: 12px ;
@@ -224,10 +334,12 @@
 #project-details-info {
   position: absolute ;
   left: 0 ;
-  top: 40px ;
+  top: 0px ;
   bottom: 0 ;
   width: 45% ;
   overflow: auto ;
+  background-size: 100% ;
+  background-repeat: no-repeat ;
 }
 #project-details-contents {
   position: absolute ;
@@ -238,7 +350,7 @@
 }
 
 #project-details-info .inside {
-  padding: 0px 40px 40px 40px ;
+  padding: 40px 40px 40px 40px ;
   position: relative ;
 }
 #project-details-contents .inside {
@@ -380,6 +492,7 @@
 #project-contents-menu li .fa-map { color: hsla(90,100%,80%,.85);}
 #project-contents-menu li .fa-volume-up { color: hsla(135,100%,80%,.85);}
 #project-contents-menu li .fa-music { color: hsla(180,100%,80%,.85);}
+#project-contents-menu li .fa-cube { color: hsla(180,100%,80%,.85);}
 #project-contents-menu li .fa-book { color: hsla(225,100%,80%,.85);}
 #project-contents-menu li .fa-server { color: hsla(270,100%,80%,.85);}
 
@@ -388,6 +501,7 @@
 #project-contents-menu li.selected .fa-map { color: hsla(90,100%,70%,1);}
 #project-contents-menu li.selected .fa-volume-up { color: hsla(135,100%,70%,1);}
 #project-contents-menu li.selected .fa-music { color: hsla(180,100%,70%,1);}
+#project-contents-menu li.selected .fa-cube { color: hsla(180,100%,70%,1);}
 #project-contents-menu li.selected .fa-book { color: hsla(225,100%,70%,1);}
 #project-contents-menu li.selected .fa-server { color: hsla(270,100%,70%,1);}
 
@@ -477,6 +591,16 @@
   font-size: 12px ;
   cursor: pointer ;
 }
+#project-contents-view .sound-list {
+  top: 0px ;
+}
+#project-contents-view .music-list {
+  top: 0px ;
+}
+#project-contents-view .asset-list {
+  top: 0px ;
+}
+
 
 #project-contents-view .music {
   display: inline-block ;
@@ -500,30 +624,17 @@
 }
 #project-contents-view .code-list {
   position: absolute ;
-  left: 0 ;
-  width: 100px ;
-  top: 0px ;
-  bottom: 0 ;
-}
-#project-contents-view .code-list div {
-  font-size: 14px ;
-  margin: 1px ;
-  padding: 6.5px ;
-  background: rgba(255,255,255,.1);
-  cursor: pointer ;
-}
-#project-contents-view .code-list div.selected {
-  background: rgba(255,255,255,.2);
-}
-#project-contents-view .code-list div i {
-  margin-right: 5px ;
+  left: 2px ;
+  width: 196px ;
+  top: 2px ;
+  bottom: 2px ;
 }
 #project-contents-view-editor {
   position: absolute ;
-  left: 100px ;
-  right: 0 ;
-  top: 0 ;
-  bottom: 0 ;
+  left: 200px ;
+  right: 2px ;
+  top: 2px ;
+  bottom: 2px ;
   overflow: hidden ;
   border-radius: 10px ;
 }
@@ -547,6 +658,12 @@
 
 #project-contents-view .import-button i {
   margin-right: 10px ;
+}
+
+#project-contents-view .import-button#project-contents-sprite-import {
+  top: 10px ;
+  right: 10px ;
+  display: none ;
 }
 #project-contents-view .doc {
   position: absolute ;
@@ -614,4 +731,25 @@
   outline: none ;
   font-size: 14px;
   font-family: "Source Sans Pro",Verdana;
+}
+.explore-project-language {
+  padding: 5px 10px ;
+  border-radius: 10px ;
+  font-size: 12px ;
+  font-family: "Ubuntu Mono" ;
+  color: rgba(255,255,255,.9) ;
+  display: inline-block ;
+  margin: 20px 10px 20px 0 ;
+}
+.explore-project-language.python {
+  background-color: hsl(160,40%,40%) ;
+}
+.explore-project-language.lua {
+  background-color: hsl(20,40%,40%) ;
+}
+.explore-project-language.javascript {
+  background-color: hsl(300,40%,40%) ;
+}
+.explore-project-language.microscript {
+  background-color: hsl(200,40%,40%) ;
 }

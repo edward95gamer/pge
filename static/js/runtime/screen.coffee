@@ -11,9 +11,15 @@ class @Screen
       left: 0
       middle: 0
       right: 0
+      wheel: 0
 
     @translation_x = 0
     @translation_y = 0
+    @rotation = 0
+    @scale_x = 1
+    @scale_y = 1
+    @screen_transform = false
+
     @anchor_x = 0
     @anchor_y = 0
     @supersampling = @previous_supersampling = 1
@@ -62,10 +68,19 @@ class @Screen
     @width = @canvas.width/ratio
     @height = @canvas.height/ratio
     @alpha = 1
+    @pixelated = 1
     @line_width = 1
     @object_rotation = 0
     @object_scale_x = 1
     @object_scale_y = 1
+
+    # @translation_x = 0
+    # @translation_y = 0
+    # @rotation = 0
+    # @scale_x = 1
+    # @scale_y = 1
+    # @screen_transform = false
+
     @context.lineCap = "round"
     @blending =
       normal: "source-over"
@@ -84,11 +99,14 @@ class @Screen
       clear: (color)->screen.clear(color)
       setColor: (color)->screen.setColor(color)
       setAlpha: (alpha)->screen.setAlpha(alpha)
+      setPixelated:(pixelated)->screen.setPixelated(pixelated)
       setBlending: (blending)->screen.setBlending(blending)
       setLinearGradient: (x1,y1,x2,y2,c1,c2)->screen.setLinearGradient(x1,y1,x2,y2,c1,c2)
       setRadialGradient: (x,y,radius,c1,c2)->screen.setRadialGradient(x,y,radius,c1,c2)
       setFont: (font)->screen.setFont(font)
       setTranslation: (tx,ty)->screen.setTranslation(tx,ty)
+      setScale: (x,y)->screen.setScale(x,y)
+      setRotation: (rotation)->screen.setRotation(rotation)
       setDrawAnchor: (ax,ay)->screen.setDrawAnchor(ax,ay)
       setDrawRotation: (rotation)->screen.setDrawRotation(rotation)
       setDrawScale: (x,y)->screen.setDrawScale(x,y)
@@ -99,7 +117,9 @@ class @Screen
       drawRoundRect: (x,y,w,h,r,c)->screen.drawRoundRect(x,y,w,h,r,c)
       drawRound: (x,y,w,h,c)->screen.drawRound(x,y,w,h,c)
       drawSprite: (sprite,x,y,w,h)->screen.drawSprite(sprite,x,y,w,h)
+      drawImage: (sprite,x,y,w,h)->screen.drawSprite(sprite,x,y,w,h)
       drawSpritePart: (sprite,sx,sy,sw,sh,x,y,w,h)->screen.drawSpritePart(sprite,sx,sy,sw,sh,x,y,w,h)
+      drawImagePart: (sprite,sx,sy,sw,sh,x,y,w,h)->screen.drawSpritePart(sprite,sx,sy,sw,sh,x,y,w,h)
       drawMap: (map,x,y,w,h)->screen.drawMap(map,x,y,w,h)
       drawText: (text,x,y,size,color)->screen.drawText(text,x,y,size,color)
       drawTextOutline: (text,x,y,size,color)->screen.drawTextOutline(text,x,y,size,color)
@@ -161,6 +181,8 @@ class @Screen
 
   setAlpha:(@alpha)->
 
+  setPixelated:(@pixelated)->
+
   setBlending:(blending)->
     blending = @blending[blending or "normal"] or "source-over"
     @context.globalCompositeOperation = blending
@@ -212,6 +234,30 @@ class @Screen
     1
 
   setTranslation:(@translation_x,@translation_y)->
+    if not isFinite @translation_x
+      @translation_x = 0
+
+    if not isFinite @translation_y
+      @translation_y = 0
+
+    @updateScreenTransform()
+
+  setScale:(@scale_x,@scale_y)->
+    if not isFinite(@scale_x) or @scale_x == 0
+      @scale_x = 1
+
+    if not isFinite(@scale_y) or @scale_y == 0
+      @scale_y = 1
+
+    @updateScreenTransform()
+
+  setRotation:(@rotation)->
+    if not isFinite @rotation
+      @rotation = 0
+    @updateScreenTransform()
+
+  updateScreenTransform:()->
+    @screen_transform = @translation_x != 0 or @translation_y != 0 or @scale_x != 1 or @scale_y != 1 or @rotation != 0
 
   setDrawAnchor:(@anchor_x,@anchor_y)->
     @anchor_x = 0 if typeof @anchor_x != "number"
@@ -221,15 +267,18 @@ class @Screen
 
   setDrawScale:(@object_scale_x,@object_scale_y=@object_scale_x)->
 
-  initDrawOp:(x,y)->
+  initDrawOp:(x,y,object_transform=true)->
     res = false
 
-    if @translation_x != 0 or @translation_y != 0
+    if @screen_transform
       @context.save()
       res = true
-      @context.translate x+@translation_x,y-@translation_y
+      @context.translate @translation_x,-@translation_y
+      @context.scale @scale_x,@scale_y
+      @context.rotate -@rotation/180*Math.PI
+      @context.translate x,y
 
-    if @object_rotation != 0 or @object_scale_x != 1 or @object_scale_y != 1
+    if object_transform and (@object_rotation != 0 or @object_scale_x != 1 or @object_scale_y != 1)
       if not res
         @context.save()
         res = true
@@ -325,7 +374,7 @@ class @Screen
     @setColor color
     @context.globalAlpha = @alpha
     @context.lineWidth = @line_width
-    transform = @initDrawOp 0,0
+    transform = @initDrawOp 0,0,false
     @context.beginPath()
     @context.moveTo x1,-y1
     @context.lineTo x2,-y2
@@ -343,9 +392,9 @@ class @Screen
 
     @context.globalAlpha = @alpha
     @context.lineWidth = @line_width
-    return if args.length<4
+    return if args.length < 4
     len = Math.floor(args.length/2)
-    transform = @initDrawOp 0,0
+    transform = @initDrawOp 0,0,false
     @context.beginPath()
     @context.moveTo args[0],-args[1]
     for i in [1..len-1]
@@ -368,7 +417,7 @@ class @Screen
     @context.lineWidth = @line_width
     return if args.length<4
     len = Math.floor(args.length/2)
-    transform = @initDrawOp 0,0
+    transform = @initDrawOp 0,0,false
     @context.beginPath()
     @context.moveTo args[0],-args[1]
     for i in [1..len-1]
@@ -391,7 +440,7 @@ class @Screen
     @context.lineWidth = @line_width
     return if args.length<4
     len = Math.floor(args.length/2)
-    transform = @initDrawOp 0,0
+    transform = @initDrawOp 0,0,false
     @context.beginPath()
     @context.moveTo args[0],-args[1]
     for i in [1..len-1]
@@ -444,6 +493,8 @@ class @Screen
         if s.length>1
           sprite = @runtime.sprites[s[0]]
           frame = s[1]|0
+    else if sprite instanceof msImage
+      return sprite.canvas or sprite.image
 
     return null if not sprite? or not sprite.ready
 
@@ -464,11 +515,14 @@ class @Screen
     canvas = @getSpriteFrame(sprite)
     return if not canvas?
 
+    if not w?
+      w = canvas.width
+
     if not h
       h = w/canvas.width*canvas.height
 
     @context.globalAlpha = @alpha
-    @context.imageSmoothingEnabled = false
+    @context.imageSmoothingEnabled = not @pixelated
     if @initDrawOp(x,-y)
       @context.drawImage canvas,-w/2-@anchor_x*w/2,-h/2+@anchor_y*h/2,w,h
       @closeDrawOp(x,-y)
@@ -479,11 +533,14 @@ class @Screen
     canvas = @getSpriteFrame(sprite)
     return if not canvas?
 
+    if not w?
+      w = sw
+
     if not h
       h = w/sw*sh
 
     @context.globalAlpha = @alpha
-    @context.imageSmoothingEnabled = false
+    @context.imageSmoothingEnabled = not @pixelated
     if @initDrawOp(x,-y)
       @context.drawImage canvas,sx,sy,sw,sh,-w/2-@anchor_x*w/2,-h/2+@anchor_y*h/2,w,h
       @closeDrawOp(x,-y)
@@ -492,14 +549,16 @@ class @Screen
 
   drawMap:(map,x,y,w,h)->
     map = @runtime.maps[map] if typeof map == "string"
-    return if not map? or not map.ready or not map.canvas?
+    return if not map? or not map.ready
     @context.globalAlpha = @alpha
-    @context.imageSmoothingEnabled = false
+    @context.imageSmoothingEnabled = not @pixelated
     if @initDrawOp(x,-y)
-      @context.drawImage map.getCanvas(),-w/2-@anchor_x*w/2,-h/2+@anchor_y*h/2,w,h
+      map.draw @context,-w/2-@anchor_x*w/2,-h/2+@anchor_y*h/2,w,h
+      #@context.drawImage map.getCanvas(),-w/2-@anchor_x*w/2,-h/2+@anchor_y*h/2,w,h
       @closeDrawOp(x,-y)
     else
-      @context.drawImage map.getCanvas(),x-w/2-@anchor_x*w/2,-y-h/2+@anchor_y*h/2,w,h
+      map.draw @context,x-w/2-@anchor_x*w/2,-y-h/2+@anchor_y*h/2,w,h
+      #@context.drawImage map.getCanvas(),x-w/2-@anchor_x*w/2,-y-h/2+@anchor_y*h/2,w,h
 
   resize:()->
     cw = window.innerWidth
@@ -579,14 +638,18 @@ class @Screen
     @initContext()
 
   startControl:(@element)->
-    @canvas.addEventListener "touchstart", (event) => @touchStart(event)
-    @canvas.addEventListener "touchmove", (event) => @touchMove(event)
+    document.addEventListener "touchstart", (event) => @touchStart(event)
+    document.addEventListener "touchmove", (event) => @touchMove(event)
     document.addEventListener "touchend" , (event) => @touchRelease(event)
     document.addEventListener "touchcancel" , (event) => @touchRelease(event)
 
-    @canvas.addEventListener "mousedown", (event) => @mouseDown(event)
-    @canvas.addEventListener "mousemove", (event) => @mouseMove(event)
+    document.addEventListener "mousedown", (event) => @mouseDown(event)
+    document.addEventListener "mousemove", (event) => @mouseMove(event)
     document.addEventListener "mouseup", (event) => @mouseUp(event)
+
+    document.addEventListener "mousewheel", (event)=>@mouseWheel(event)
+    document.addEventListener "DOMMouseScroll", (event)=>@mouseWheel(event)
+
 
     devicePixelRatio = window.devicePixelRatio || 1
     backingStoreRatio = @context.webkitBackingStorePixelRatio ||
@@ -698,3 +761,12 @@ class @Screen
     @mouse.pressed = Math.min(1,@mouse.left+@mouse.right+@mouse.middle)
 
     false
+
+  mouseWheel:(e)->
+    if e.wheelDelta < 0 or e.detail > 0
+      @wheel = -1
+    else
+      @wheel = 1
+
+  takePicture:(callback)->
+    callback @canvas.toDataURL()

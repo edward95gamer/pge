@@ -56,33 +56,60 @@ div.projectoptions#projectoptions
             option(value=">1x1") #{translator.get("1:1 or above")}
 
 
-        div.projectoption#project-option-graphics
-          h3 #{translator.get("Graphics library")}
-          select#projectoption-graphics
-            option(value="M1") #{translator.get("basic graphics API")}
-            option(value="M2D") #{translator.get("micro 2D - Experimental - Built on Pixi.js")}
-            option(value="M3D") #{translator.get("micro 3D - Experimental - Built on Babylon.js")}
-            option(value="PIXI") #{translator.get("Pixi.js - Experimental")}
-            option(value="BABYLON") #{translator.get("Babylon.js - Experimental")}
-
-        div.projectoption#project-option-libs
-          h3 #{translator.get("Additional tools and libraries")}
-          each val,key in optional_libs  
-            input(type="checkbox" id="project-option-lib-"+key)
-            label(for="project-option-lib-"+key) #{translator.get(val.title)}
-            div.tip #{translator.get("Note: this integration is experimental")}
-            br
-
         div.projectoption#project-option-storage
           h3 #{translator.get("Storage used")}
           span#projectoption-storage-used
 
+        div#advanced-project-options-button
+          i.fa
+          span #{translator.get("Show advanced options")}
+
+        div#advanced-project-options
+          div.projectoption#project-option-type
+            h3 #{translator.get("Project Type")}
+            select#projectoption-type
+              option(value="app") #{translator.get("App (game, demo...)")}
+              option(value="library") #{translator.get("Library")}
+              option(value="plugin") #{translator.get("Plug-in")}
+              option(value="tutorial") #{translator.get("Tutorial")}
+
+            div.tip.library
+              p #{translator.get("Library")}
+              ul
+                li.tip #{translator.get("Library files to import should be stored in a 'lib' folder.")}
+                li.tip #{translator.get("Your demo app files must be outside the 'lib' folder.")}
+                li.tip #{translator.get("Document your library in the 'doc' tab of your project!")}
+
+          div.projectoption#project-option-language
+            h3 #{translator.get("Language support")}
+            select#projectoption-language
+              each val,key in language_engines
+                option(value=key) #{translator.get(val.title)}
+
+          div.projectoption#project-option-graphics
+            h3 #{translator.get("Graphics library")}
+            select#projectoption-graphics
+              option(value="M1") #{translator.get("basic graphics API")}
+              option(value="M2D") #{translator.get("micro 2D - Experimental - Built on Pixi.js")}
+              option(value="M3D") #{translator.get("micro 3D - Experimental - Built on Babylon.js")}
+              option(value="PIXI") #{translator.get("Pixi.js - Experimental")}
+              option(value="BABYLON") #{translator.get("Babylon.js - Experimental")}
+
+          div.projectoption#project-option-libs
+            h3 #{translator.get("Additional tools and libraries")}
+            each val,key in optional_libs
+              input(type="checkbox" id="project-option-lib-"+key)
+              label(for="project-option-lib-"+key) #{translator.get(val.title)}
+              div.tip #{translator.get("Note: this integration is experimental")}
+              br
+
     div#projectoptions-users
       div#projectoptions-users-content
-        h3 #{translator.get("Users")}
-        p #{translator.get("Here is where your grant other users access to edit your project. Users added here are granted full control on your project, except for adding or deleting other users.")}
-        div.userlist#project-user-list
+        div.projectoption
+          h3 #{translator.get("Users")}
+          p #{translator.get("Here is where your grant other users access to edit your project. Users added here are granted full control on your project, except for adding or deleting other users.")}
+          div.userlist#project-user-list
 
-        div.adduser
-          input.username#add-project-user-nick(placeholder=translator.get("nickname"))
-          div.addbutton#add-project-user <i class="fa fa-user-plus"></i> #{translator.get("Add User")}
+          div.adduser
+            input.username#add-project-user-nick(placeholder=translator.get("nickname"))
+            div.addbutton#add-project-user <i class="fa fa-user-plus"></i> #{translator.get("Add User")}

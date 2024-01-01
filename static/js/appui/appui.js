@@ -1,19 +1,11 @@
 var AppUI;
 
 AppUI = (function() {
-  function AppUI(app) {
-    var fn, fn1, j, k, len, len1, ref, ref1, s;
-    this.app = app;
-    this.sections = ["code", "sprites", "maps", "assets", "sounds", "music", "doc", "options", "publish"];
+  function AppUI(app1) {
+    var advanced, fn, fn1, j, k, len, len1, ref, ref1, s;
+    this.app = app1;
+    this.sections = ["code", "sprites", "maps", "assets", "sounds", "music", "doc", "sync", "options", "publish", "tabs"];
     this.menuoptions = ["home", "explore", "projects", "help", "tutorials", "about", "usersettings"];
-    this.allowed_sections = {
-      "code": true,
-      "sprites": true,
-      "maps": true,
-      "doc": true,
-      "options": true,
-      "publish": true
-    };
     ref = this.sections;
     fn = (function(_this) {
       return function(s) {
@@ -29,7 +21,6 @@ AppUI = (function() {
       fn(s);
     }
     this.warning_messages = [];
-    this.updateAllowedSections();
     document.addEventListener("keydown", (function(_this) {
       return function(e) {
         if ((window.navigator.platform.match("Mac") ? e.metaKey : e.ctrlKey) && e.keyCode === 83) {
@@ -86,12 +77,38 @@ AppUI = (function() {
       document.getElementById("usersetting-block-email").style.display = "none";
       document.getElementById("usersetting-block-newsletter").style.display = "none";
       document.getElementById("usersetting-block-account-type").style.display = "none";
+      document.body.classList.add("standalone");
     }
     this.createLoginFunctions();
+    advanced = document.getElementById("advanced-create-project-options-button");
     this.setAction("create-project-button", (function(_this) {
       return function() {
         _this.show("create-project-overlay");
-        return _this.focus("create-project-title");
+        _this.focus("create-project-title");
+        document.getElementById("createprojectoption-type").value = "app";
+        document.getElementById("createprojectoption-language").value = "microscript_v2";
+        document.getElementById("createprojectoption-graphics").value = "M1";
+        document.getElementById("create-project-option-lib-matterjs").checked = false;
+        document.getElementById("create-project-option-lib-cannonjs").checked = false;
+        return _this.hideAdvanced();
+      };
+    })(this));
+    this.hideAdvanced = (function(_this) {
+      return function() {
+        advanced.classList.remove("open");
+        document.getElementById("advanced-create-project-options").style.display = "none";
+        return advanced.childNodes[1].innerText = _this.app.translator.get("Advanced");
+      };
+    })(this);
+    advanced.addEventListener("click", (function(_this) {
+      return function() {
+        if (advanced.classList.contains("open")) {
+          return _this.hideAdvanced();
+        } else {
+          advanced.classList.add("open");
+          document.getElementById("advanced-create-project-options").style.display = "block";
+          return advanced.childNodes[1].innerText = _this.app.translator.get("Hide advanced options");
+        }
       };
     })(this));
     this.setAction("import-project-button", (function(_this) {
@@ -111,11 +128,6 @@ AppUI = (function() {
         return input.click();
       };
     })(this));
-    this.setAction("create-project-window", (function(_this) {
-      return function(event) {
-        return event.stopPropagation();
-      };
-    })(this));
     this.setAction("home-action-explore", (function(_this) {
       return function() {
         return _this.setMainSection("explore");
@@ -128,21 +140,33 @@ AppUI = (function() {
     })(this));
     document.getElementById("create-project-overlay").addEventListener("mousedown", (function(_this) {
       return function(event) {
-        return _this.hide("create-project-overlay");
-      };
-    })(this));
-    document.getElementById("create-project-window").addEventListener("mousedown", (function(_this) {
-      return function(event) {
-        return event.stopPropagation();
+        var b;
+        b = document.getElementById("create-project-window").getBoundingClientRect();
+        if (event.clientX < b.x || event.clientX > b.x + b.width || event.clientY < b.y || event.clientY > b.y + b.height) {
+          _this.hide("create-project-overlay");
+        }
+        return true;
       };
     })(this));
     this.setAction("create-project-submit", (function(_this) {
       return function() {
-        var slug, title;
+        var libs, slug, title;
         title = _this.get("create-project-title").value;
         slug = RegexLib.slugify(title);
         if (title.length > 0 && slug.length > 0) {
-          _this.app.createProject(title, slug);
+          libs = [];
+          if (document.getElementById("create-project-option-lib-matterjs").checked) {
+            libs.push("matterjs");
+          }
+          if (document.getElementById("create-project-option-lib-cannonjs").checked) {
+            libs.push("cannonjs");
+          }
+          _this.app.createProject(title, slug, {
+            type: document.getElementById("createprojectoption-type").value,
+            language: document.getElementById("createprojectoption-language").value,
+            graphics: document.getElementById("createprojectoption-graphics").value,
+            libs: libs
+          });
           _this.hide("create-project-overlay");
           return _this.get("create-project-title").value = "";
         }
@@ -151,13 +175,10 @@ AppUI = (function() {
     this.doc_splitbar = new SplitBar("doc-section", "horizontal");
     this.code_splitbar = new SplitBar("code-section", "horizontal");
     this.runtime_splitbar = new SplitBar("runtime-container", "vertical");
-    this.runtime_splitbar.setPosition(67);
-    this.sprites_splitbar = new SplitBar("sprites-section", "horizontal");
-    this.sprites_splitbar.setPosition(20);
-    this.maps_splitbar = new SplitBar("maps-section", "horizontal");
-    this.maps_splitbar.setPosition(20);
-    this.mapeditor_splitbar = new SplitBar("mapeditor-container", "horizontal");
-    this.mapeditor_splitbar.setPosition(80);
+    this.runtime_splitbar.initPosition(67);
+    this.debug_splitbar = new SplitBar("terminal-debug-container", "horizontal");
+    this.debug_splitbar.closed2 = true;
+    this.debug_splitbar.splitbar_size = 12;
     this.setAction("backtoprojects", (function(_this) {
       return function() {
         if (_this.app.project != null) {
@@ -199,6 +220,9 @@ AppUI = (function() {
           results = [];
           for (l = 0, len2 = list.length; l < len2; l++) {
             p = list[l];
+            if (p.dataset.title == null) {
+              continue;
+            }
             ok = p.dataset.title.toLowerCase().indexOf(search) >= 0;
             ok |= p.dataset.description.toLowerCase().indexOf(search) >= 0;
             ok |= p.dataset.tags.toLowerCase().indexOf(search) >= 0;
@@ -354,6 +378,9 @@ AppUI = (function() {
     this.hide("projectview");
     this.show("myprojects");
     this.app.runwindow.projectClosed();
+    this.app.debug.projectClosed();
+    this.app.tab_manager.projectClosed();
+    this.app.lib_manager.projectClosed();
     this.app.project = null;
     this.project = null;
     this.app.updateProjectList();
@@ -363,7 +390,7 @@ AppUI = (function() {
   };
 
   AppUI.prototype.setSection = function(section, useraction) {
-    var fn, j, len, ref, s;
+    var fn, item, j, k, len, len1, list, menuitem, ref, s;
     this.current_section = section;
     ref = this.sections;
     fn = (function(_this) {
@@ -387,36 +414,39 @@ AppUI = (function() {
       s = ref[j];
       fn(s);
     }
+    menuitem = document.getElementById("menuitem-" + section);
+    if (menuitem != null) {
+      menuitem.classList.add("selected");
+    }
+    list = document.querySelectorAll(".menuitem-plugin");
+    for (k = 0, len1 = list.length; k < len1; k++) {
+      item = list[k];
+      if (item.id !== ("menuitem-" + section)) {
+        item.classList.remove("selected");
+      }
+    }
+    this.app.tab_manager.setTabView(section);
     if (section === "sprites") {
       this.app.sprite_editor.spriteview.windowResized();
     }
     if (section === "code") {
       this.code_splitbar.update();
+      this.debug_splitbar.update();
       this.runtime_splitbar.update();
       this.app.runwindow.windowResized();
+      this.app.editor.editor.resize();
+      this.app.editor.update();
     }
     if (section === "sprites") {
-      this.sprites_splitbar.update();
-      if (this.sprites_splitbar.position / 100 * this.sprites_splitbar.total_width < 64) {
-        this.sprites_splitbar.setPosition(100 * 150 / this.sprites_splitbar.total_width);
-      } else if (this.sprites_splitbar.position > 90) {
-        this.sprites_splitbar.setPosition(50);
-      }
+      this.app.sprite_editor.update();
     }
     if (section === "maps") {
-      if (this.mapeditor_splitbar.position > 90) {
-        this.mapeditor_splitbar.setPosition(80);
-      }
-      if (this.maps_splitbar.position / 100 * this.maps_splitbar.total_width < 90) {
-        this.maps_splitbar.setPosition(100 * 210 / this.maps_splitbar.total_width);
-      } else if (this.maps_splitbar.position > 90) {
-        this.maps_splitbar.setPosition(50);
-      }
-      this.maps_splitbar.update();
-      this.mapeditor_splitbar.update();
+      this.app.map_editor.update();
     }
     if (section === "doc") {
       this.doc_splitbar.update();
+      this.app.doc_editor.editor.resize();
+      this.app.doc_editor.checkTutorial();
     }
     if (section === "sounds") {
       this.app.sound_editor.update();
@@ -424,12 +454,21 @@ AppUI = (function() {
     if (section === "music") {
       this.app.music_editor.update();
     }
+    if (section === "assets") {
+      this.app.assets_manager.update();
+    }
+    if (section === "sync") {
+      this.app.sync.update();
+    }
     if (section === "options") {
       this.app.options.update();
     }
+    app.editor.editor.setReadOnly(section !== "code");
+    app.doc_editor.editor.setReadOnly(section !== "doc");
     if (useraction && (this.app.project != null)) {
-      return this.app.app_state.pushState("project." + this.app.project.slug + "." + section, "/projects/" + this.app.project.slug + "/" + section + "/");
+      this.app.app_state.pushState("project." + this.app.project.slug + "." + section, "/projects/" + this.app.project.slug + "/" + section + "/");
     }
+    return this.app.runwindow.hideAll();
   };
 
   AppUI.prototype.accountRequired = function(callback) {
@@ -496,11 +535,17 @@ AppUI = (function() {
     }
     if (section === "projects") {
       this.code_splitbar.update();
+      this.debug_splitbar.update();
       this.runtime_splitbar.update();
       this.app.runwindow.windowResized();
     }
     if (section === "explore") {
       this.app.explore.update();
+    } else {
+      this.app.explore.closed();
+    }
+    if (section === "help") {
+      this.app.documentation.updateViewPos();
     }
     if (section === "about") {
       this.app.about.setSection("about");
@@ -508,6 +553,7 @@ AppUI = (function() {
     if (section === "tutorials") {
       this.app.tutorials.load();
     }
+    this.app.runwindow.hideAll();
   };
 
   AppUI.prototype.setDisplay = function(element, value) {
@@ -789,43 +835,18 @@ AppUI = (function() {
       this.get("user-nick").innerHTML = nick;
       if (this.project != null) {
         this.get("project-name").innerHTML = this.project.title;
-        PixelatedImage.setURL(this.get("project-icon"), location.origin + ("/" + this.project.owner.nick + "/" + this.project.slug + "/" + this.project.code + "/icon.png"), 32);
+        this.get("project-icon").src = location.origin + ("/" + this.project.owner.nick + "/" + this.project.slug + "/" + this.project.code + "/icon.png");
       }
     }
     this.get("user-nick").style.display = "inline-block";
     this.show("login-info");
     this.hide("login-overlay");
-    this.updateAllowedSections();
     this.setMainSection("projects", location.pathname.length < 4);
     if (this.app.user.info.size > this.app.user.info.max_storage) {
       text = this.app.translator.get("Your account is out of space!");
       text += " " + this.app.translator.get("You are using %USED% of the %ALLOWED% you are allowed.").replace("%USED%", this.displayByteSize(this.app.user.info.size)).replace("%ALLOWED%", this.displayByteSize(this.app.user.info.max_storage));
       text += " <a href='https://microstudio.dev/community/tips/your-account-is-out-of-space/109/' target='_blank'>" + (this.app.translator.get("More info...")) + "</a>";
       return this.addWarningMessage(text, void 0, "out_of_storage", false);
-    }
-  };
-
-  AppUI.prototype.updateAllowedSections = function() {
-    var e, j, len, ref, s;
-    if (this.app.user != null) {
-      this.allowed_sections.sounds = true;
-      this.allowed_sections.music = true;
-      if (this.app.user.flags.experimental) {
-        document.getElementById("project-option-graphics").style.display = "block";
-        document.getElementById("project-option-libs").style.display = "block";
-      }
-    }
-    ref = this.sections;
-    for (j = 0, len = ref.length; j < len; j++) {
-      s = ref[j];
-      e = document.getElementById("menuitem-" + s);
-      if (e != null) {
-        if (this.allowed_sections[s]) {
-          e.style.display = "block";
-        } else {
-          e.style.display = "none";
-        }
-      }
     }
   };
 
@@ -876,9 +897,9 @@ AppUI = (function() {
       return function(event) {
         event.stopPropagation();
         event.stopImmediatePropagation();
-        if (confirm(_this.app.translator.get("Do you want to clone this project?"))) {
+        return ConfirmDialog.confirm(_this.app.translator.get("Do you want to clone this project?"), _this.app.translator.get("Clone"), _this.app.translator.get("Cancel"), function() {
           return _this.app.cloneProject(p);
-        }
+        });
       };
     })(this));
     delete_button = document.createElement("div");
@@ -891,11 +912,14 @@ AppUI = (function() {
     buttons.appendChild(delete_button);
     delete_button.addEventListener("click", (function(_this) {
       return function(event) {
+        var msg, ok;
         event.stopPropagation();
         event.stopImmediatePropagation();
-        if (confirm(p.owner.nick === _this.app.nick ? _this.app.translator.get("Really delete this project?") : _this.app.translator.get("Really quit this project?"))) {
+        msg = p.owner.nick === _this.app.nick ? _this.app.translator.get("Really delete this project?") : _this.app.translator.get("Really quit this project?");
+        ok = p.owner.nick === _this.app.nick ? _this.app.translator.get("Delete") : _this.app.translator.get("Quit");
+        return ConfirmDialog.confirm(msg, ok, _this.app.translator.get("Cancel"), function() {
           return _this.app.deleteProject(p);
-        }
+        });
       };
     })(this));
     title = document.createElement("div");
@@ -903,8 +927,19 @@ AppUI = (function() {
     title.innerText = p.title;
     element.appendChild(title);
     element.appendChild(document.createElement("br"));
-    icon = PixelatedImage.create(location.origin + ("/" + p.owner.nick + "/" + p.slug + "/" + p.code + "/icon.png"), 144);
+    icon = new Image;
+    icon.src = location.origin + ("/" + p.owner.nick + "/" + p.slug + "/" + p.code + "/icon.png");
+    icon.classList.add("pixelated");
     element.appendChild(icon);
+    if (p.poster) {
+      element.style.background = "linear-gradient(to bottom, hsla(200,20%,20%,0.6), hsla(200,20%,20%,0.9)),url(/" + p.owner.nick + "/" + p.slug + "/" + p.code + "/poster.png)";
+      element.style["background-size"] = "cover";
+      element.style["background-opacity"] = .5;
+      icon.style.width = "104px";
+      icon.style.height = "104px";
+      icon.style["margin-top"] = "40px";
+      icon.style["box-shadow"] = "0 0 10px 1px #000";
+    }
     element.addEventListener("click", (function(_this) {
       return function() {
         return _this.app.openProject(p);
@@ -999,16 +1034,18 @@ AppUI = (function() {
       useraction = true;
     }
     this.get("project-name").innerHTML = this.project.title;
-    PixelatedImage.setURL(this.get("project-icon"), location.origin + ("/" + this.project.owner.nick + "/" + this.project.slug + "/" + this.project.code + "/icon.png"), 32);
+    this.get("project-icon").src = location.origin + ("/" + this.project.owner.nick + "/" + this.project.slug + "/" + this.project.code + "/icon.png");
     this.setSection("code", useraction);
     this.show("projectview");
     this.hide("myprojects");
     this.project.addListener(this);
-    this.code_splitbar.setPosition(50);
-    this.runtime_splitbar.setPosition(50);
+    this.code_splitbar.initPosition(50);
+    this.debug_splitbar.closed2 = true;
+    this.debug_splitbar.update();
+    this.runtime_splitbar.initPosition(50);
     this.app.runwindow.terminal.start();
     this.updateActiveUsers();
-    return this.updateAllowedSections();
+    return this.doc_splitbar.initPosition(50);
   };
 
   AppUI.prototype.projectUpdate = function(change) {
@@ -1185,7 +1222,10 @@ AppUI = (function() {
     span.innerText = nick;
     div.appendChild(span);
     if (tier) {
-      icon = PixelatedImage.create(location.origin + ("/microstudio/patreon/badges/sprites/" + tier + ".png"), 32);
+      icon = new Image;
+      icon.src = location.origin + ("/microstudio/patreon/badges/sprites/" + tier + ".png");
+      icon.classList.add("pixelated");
+      icon.style = "width: 32px; height: 32px;";
       icon.alt = icon.title = this.app.getTierName(tier);
       div.appendChild(icon);
     }
@@ -1215,6 +1255,27 @@ AppUI = (function() {
   AppUI.prototype.resetImportButton = function() {
     document.getElementById("import-project-button").innerHTML = "<i class=\"fa fa-upload\"></i> " + (this.app.translator.get("Import Project"));
     return document.getElementById("import-project-button").style.removeProperty("background");
+  };
+
+  AppUI.prototype.bumpElement = function(select) {
+    var element, interval, start;
+    element = document.querySelector(select);
+    if (element != null) {
+      start = Date.now();
+      return interval = setInterval((function() {
+        var d, s, t;
+        t = (Date.now() - start) / 300;
+        if (t >= 1) {
+          element.style.transform = "none";
+          return clearInterval(interval);
+        } else {
+          t = Math.pow(t, .8);
+          s = 1 + .5 * Math.sin(t * Math.PI);
+          d = -.5 * Math.sin(t * Math.PI) * 20;
+          return element.style.transform = "scale(" + s + ") rotateZ(" + d + "deg)";
+        }
+      }), 16);
+    }
   };
 
   return AppUI;

@@ -1,13 +1,21 @@
 class @Sound
   constructor:(@audio,@url)->
-    request = new XMLHttpRequest()
-    request.open('GET', @url, true)
-    request.responseType = 'arraybuffer'
+    @class = MicroSound if MicroSound?
 
-    request.onload = ()=>
-      @audio.context.decodeAudioData request.response, (@buffer)=>
+    if @url instanceof AudioBuffer
+      @buffer = @url
+      @ready = 1
+    else
+      @ready = 0
+      request = new XMLHttpRequest()
+      request.open('GET', @url, true)
+      request.responseType = 'arraybuffer'
 
-    request.send()
+      request.onload = ()=>
+        @audio.context.decodeAudioData request.response, (@buffer)=>
+          @ready = 1
+
+      request.send()
 
   play:(volume=1,pitch=1,pan=0,loopit=false)->
     return if not @buffer?
@@ -46,9 +54,10 @@ class @Sound
       @audio.addPlaying playing
 
     res =
-      stop:()->
+      stop:()=>
         source.stop()
         if playing then @audio.removePlaying playing
+        1
 
       setVolume:(volume)-> gain.gain.value = Math.max(0,Math.min(1,volume))
       setPitch:(pitch)-> source.playbackRate.value = Math.max(.001,Math.min(1000,pitch))
@@ -57,3 +66,45 @@ class @Sound
 
     source.onended = ()-> res.finished = true
     res
+
+  @createSoundClass = (audiocore)->
+    window.MicroSound = class
+      @classname = "Sound"
+
+      constructor:(channels,length,sampleRate=44100)->
+        @class = MicroSound
+        channels = if channels == 1 then 1 else 2
+        if not (length>1) or not (length < 44100*1000)
+          length = 44100
+        if not (sampleRate>=8000) or not (sampleRate <= 96000)
+          sampleRate = 44100
+
+        buffer = audiocore.context.createBuffer(channels,length,sampleRate)
+        snd = new Sound(audiocore,buffer)
+
+        @channels = channels
+        @length = length
+        @sampleRate = sampleRate
+
+        ch1 = buffer.getChannelData(0)
+        if channels == 2
+          ch2 = buffer.getChannelData(1)
+
+        @play = (volume,pitch,pan,loopit)-> snd.play(volume,pitch,pan,loopit)
+        @write = (channel,position,value)->
+          if channel == 0
+            ch1 = buffer.getChannelData(0)
+            ch1[position] = value
+          else if channels == 2
+            ch2 = buffer.getChannelData(1)
+            ch2[position] = value
+
+        @read = (channel,position)->
+          if channel == 0
+            ch1 = buffer.getChannelData(0)
+            ch1[position]
+          else if channels == 2
+            ch2 = buffer.getChannelData(1)
+            ch2[position]
+          else
+            0

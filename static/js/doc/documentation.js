@@ -1,5 +1,6 @@
 this.Documentation = (function() {
   function Documentation(app) {
+    var e, fn, fn1, j, k, len1, len2, list;
     this.app = app;
     this.doc = "";
     this.help = {};
@@ -7,50 +8,141 @@ this.Documentation = (function() {
     this.title_elements = [];
     setTimeout(((function(_this) {
       return function() {
-        return _this.load();
+        return _this.load("API", function(src) {
+          _this.buildLiveHelp(src, "API");
+          return setTimeout((function() {
+            return _this.setSection("Quickstart", function() {
+              return _this.buildLiveHelp(_this.doc, "Quickstart");
+            });
+          }), 100);
+        });
       };
-    })(this)), 1000);
+    })(this)), 100);
+    this.sections = {};
+    list = document.getElementsByClassName("help-section-category");
+    fn = (function(_this) {
+      return function(e) {
+        var title;
+        title = e.getElementsByClassName("help-section-title")[0];
+        return title.addEventListener("click", function() {
+          if (e.classList.contains("collapsed")) {
+            e.classList.remove("collapsed");
+          } else {
+            e.classList.add("collapsed");
+          }
+          return _this.updateViewPos();
+        });
+      };
+    })(this);
+    for (j = 0, len1 = list.length; j < len1; j++) {
+      e = list[j];
+      fn(e);
+    }
+    list = document.getElementsByClassName("help-section-button");
+    fn1 = (function(_this) {
+      return function(e) {
+        return e.addEventListener("click", function() {
+          var id, split;
+          split = e.id.split("-");
+          split.splice(0, 1);
+          id = split.join("-");
+          return _this.setSection(id);
+        });
+      };
+    })(this);
+    for (k = 0, len2 = list.length; k < len2; k++) {
+      e = list[k];
+      fn1(e);
+    }
+    window.addEventListener("resize", (function(_this) {
+      return function() {
+        return _this.updateViewPos();
+      };
+    })(this));
   }
 
-  Documentation.prototype.load = function() {
-    var req;
+  Documentation.prototype.setSection = function(id, callback, url) {
+    var e, fn, j, len1, list;
+    this.load((url != null ? url : id), (function(_this) {
+      return function(doc1) {
+        _this.doc = doc1;
+        _this.update();
+        if (callback != null) {
+          return callback();
+        }
+      };
+    })(this));
+    list = document.getElementsByClassName("help-section-button");
+    fn = (function(_this) {
+      return function(e) {
+        if (e.id === ("documentation-" + id)) {
+          e.classList.add("selected");
+          return e.parentNode.parentNode.classList.remove("collapsed");
+        } else {
+          return e.classList.remove("selected");
+        }
+      };
+    })(this);
+    for (j = 0, len1 = list.length; j < len1; j++) {
+      e = list[j];
+      fn(e);
+    }
+  };
+
+  Documentation.prototype.load = function(id, callback, lang) {
+    var ref1, req, url;
+    if (id == null) {
+      id = "Quickstart";
+    }
+    if (callback == null) {
+      callback = (function() {});
+    }
+    if (lang == null) {
+      lang = this.app.translator.lang;
+    }
+    if (this.sections[id] != null) {
+      return callback(this.sections[id]);
+    }
+    if ((ref1 = !lang) === "fr" || ref1 === "de" || ref1 === "pl" || ref1 === "it" || ref1 === "pt" || ref1 === "ru") {
+      lang = "en";
+    }
     req = new XMLHttpRequest();
     req.onreadystatechange = (function(_this) {
       return function(event) {
         if (req.readyState === XMLHttpRequest.DONE) {
           if (req.status === 200) {
-            _this.doc = req.responseText;
-            return _this.update();
+            _this.sections[id] = req.responseText;
+            return callback(_this.sections[id]);
+          } else if (lang !== "en") {
+            return _this.load(id, callback, "en");
           }
         }
       };
     })(this);
-    switch (this.app.translator.lang) {
-      case "fr":
-        req.open("GET", "/doc/fr/doc.md");
-        break;
-      case "de":
-        req.open("GET", "/doc/de/doc.md");
-        break;
-      case "pl":
-        req.open("GET", "/doc/pl/doc.md");
-        break;
-      case "it":
-        req.open("GET", "/doc/it/doc.md");
-        break;
-      case "pt":
-        req.open("GET", "/doc/pt/doc.md");
-        break;
-      default:
-        req.open("GET", "/doc/en/doc.md");
+    if (id.startsWith("http")) {
+      url = id;
+    } else {
+      url = "/microstudio.wiki/" + lang + "/" + lang + "-" + id + ".md";
     }
+    req.open("GET", url);
     return req.send();
+  };
+
+  Documentation.prototype.updateViewPos = function() {
+    var doc, sections;
+    sections = document.getElementById("help-sections");
+    doc = document.getElementById("help-document");
+    return doc.style.top = sections.offsetHeight + "px";
   };
 
   Documentation.prototype.update = function() {
     var e, element, j, len1, list;
+    if (this.doc == null) {
+      return;
+    }
     element = document.getElementById("documentation");
     marked.setOptions({
+      baseUrl: "/microstudio.wiki/",
       headerPrefix: "documentation_"
     });
     element.innerHTML = DOMPurify.sanitize(marked(this.doc));
@@ -60,7 +152,7 @@ this.Documentation = (function() {
       e.target = "_blank";
     }
     this.buildToc();
-    return this.buildLiveHelp();
+    return this.updateViewPos();
   };
 
   Documentation.prototype.buildToc = function() {
@@ -109,9 +201,9 @@ this.Documentation = (function() {
     }
   };
 
-  Documentation.prototype.buildLiveHelp = function() {
+  Documentation.prototype.buildLiveHelp = function(src, section) {
     var content, current_section, index, line, lines, ref, slugger, tline;
-    lines = this.doc.split("\n");
+    lines = src.split("\n");
     index = 0;
     current_section = "";
     slugger = new marked.Slugger;
@@ -139,7 +231,8 @@ this.Documentation = (function() {
           if (line.indexOf("help_end") > 0) {
             this.help[ref] = {
               pointer: current_section,
-              value: content
+              value: content,
+              section: section
             };
             break;
           } else {
@@ -158,7 +251,8 @@ this.Documentation = (function() {
           if (line.indexOf("suggest_end") > 0) {
             this.suggest[ref] = {
               pointer: current_section,
-              value: content
+              value: content,
+              section: section
             };
             break;
           } else {
@@ -200,7 +294,7 @@ this.Documentation = (function() {
     within = false;
     for (k = 0, len1 = res.length; k < len1; k++) {
       r = res[k];
-      if (r.ref === r.radix && r.index <= position && r.index + r.ref.length >= position) {
+      if (r.ref === r.radix && r.radix.length === best && r.index + r.radix.length < line.length) {
         return [r];
       }
       within = within || r.within;
@@ -238,6 +332,140 @@ this.Documentation = (function() {
       }
     }
     return res;
+  };
+
+  Documentation.prototype.getPluginsSection = function() {
+    var help_sections, plugins_section;
+    help_sections = document.getElementById("help-sections");
+    plugins_section = document.getElementById("help-plugins");
+    if (plugins_section == null) {
+      plugins_section = document.createElement("div");
+      plugins_section.classList.add("help-section-category");
+      plugins_section.classList.add("bg-green");
+      plugins_section.id = "help-plugins";
+      help_sections.appendChild(plugins_section);
+      plugins_section.innerHTML = "<div class=\"help-section-title\">\n  <i class=\"fa\"></i><span>" + (this.app.translator.get("Plug-ins")) + "</span>\n</div>\n<div class=\"help-section-content\"></div>";
+      plugins_section.querySelector(".help-section-title").addEventListener("click", (function(_this) {
+        return function() {
+          if (plugins_section.classList.contains("collapsed")) {
+            plugins_section.classList.remove("collapsed");
+          } else {
+            plugins_section.classList.add("collapsed");
+          }
+          return _this.updateViewPos();
+        };
+      })(this));
+    }
+    return plugins_section;
+  };
+
+  Documentation.prototype.addPlugin = function(id, title, link) {
+    var doc, plugins_section;
+    id = "documentation-" + id;
+    if (!document.getElementById(id)) {
+      plugins_section = this.getPluginsSection();
+      doc = document.createElement("div");
+      doc.id = id;
+      doc.classList.add("help-section-button");
+      doc.innerText = title;
+      plugins_section.querySelector(".help-section-content").appendChild(doc);
+      doc.addEventListener("click", (function(_this) {
+        return function() {
+          return _this.setSection(link);
+        };
+      })(this));
+      return this.updateViewPos();
+    }
+  };
+
+  Documentation.prototype.removePlugin = function(id) {
+    var element, parent;
+    id = "documentation-" + id;
+    element = document.getElementById(id);
+    if (element != null) {
+      parent = element.parentNode;
+      parent.removeChild(element);
+      if (parent.childNodes.length === 0) {
+        this.removeAllPlugins();
+      }
+      return this.updateViewPos();
+    }
+  };
+
+  Documentation.prototype.removeAllPlugins = function() {
+    var plugins_section;
+    plugins_section = document.getElementById("help-plugins");
+    if (plugins_section != null) {
+      plugins_section.parentNode.removeChild(plugins_section);
+      return this.updateViewPos();
+    }
+  };
+
+  Documentation.prototype.getLibsSection = function() {
+    var help_sections, libs_section;
+    help_sections = document.getElementById("help-sections");
+    libs_section = document.getElementById("help-libraries");
+    if (libs_section == null) {
+      libs_section = document.createElement("div");
+      libs_section.classList.add("help-section-category");
+      libs_section.classList.add("bg-purple");
+      libs_section.id = "help-libraries";
+      help_sections.appendChild(libs_section);
+      libs_section.innerHTML = "<div class=\"help-section-title\">\n  <i class=\"fa\"></i><span>" + (this.app.translator.get("Libraries in use")) + "</span>\n</div>\n<div class=\"help-section-content\"></div>";
+      libs_section.querySelector(".help-section-title").addEventListener("click", (function(_this) {
+        return function() {
+          if (libs_section.classList.contains("collapsed")) {
+            libs_section.classList.remove("collapsed");
+          } else {
+            libs_section.classList.add("collapsed");
+          }
+          return _this.updateViewPos();
+        };
+      })(this));
+    }
+    return libs_section;
+  };
+
+  Documentation.prototype.addLib = function(id, title, link) {
+    var doc, libs_section;
+    id = "documentation-" + id;
+    if (!document.getElementById(id)) {
+      libs_section = this.getLibsSection();
+      doc = document.createElement("div");
+      doc.id = id;
+      doc.classList.add("help-section-button");
+      doc.innerText = title;
+      libs_section.querySelector(".help-section-content").appendChild(doc);
+      doc.addEventListener("click", (function(_this) {
+        return function() {
+          return _this.setSection(link);
+        };
+      })(this));
+      return this.updateViewPos();
+    }
+  };
+
+  Documentation.prototype.removeLib = function(id) {
+    var element, parent;
+    id = "documentation-" + id;
+    element = document.getElementById(id);
+    if (element != null) {
+      parent = element.parentNode;
+      parent.removeChild(element);
+      if (parent.childNodes.length === 0) {
+        this.removeAllLibs();
+      }
+      return this.updateViewPos();
+    }
+  };
+
+  Documentation.prototype.removeAllLibs = function() {
+    var libs_section;
+    libs_section = document.getElementById("help-libraries");
+    if (libs_section != null) {
+      libs_section.parentNode.removeChild(libs_section);
+      return this.updateViewPos();
+    }
   };
 
   return Documentation;

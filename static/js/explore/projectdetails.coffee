@@ -1,6 +1,6 @@
 class @ProjectDetails
   constructor:(@app)->
-    @menu = ["code","sprites","sounds","music","doc"]
+    @menu = ["code","sprites","sounds","music","assets","doc"]
     for s in @menu
       do (s)=>
         document.getElementById("project-contents-menu-#{s}").addEventListener "click",()=>
@@ -42,6 +42,36 @@ class @ProjectDetails
       },(msg)=>
         @app.project.updateSourceList()
         @setSelectedSource(@selected_source)
+
+    document.getElementById("project-contents-sprite-import").addEventListener "click",()=>
+      return if not @app.project?
+      return if not @selected_sprite?
+      name = @selected_sprite.name
+      return if not name?
+      return if @imported_sprites[name]
+      @imported_sprites[name] = true
+
+      document.getElementById("project-contents-sprite-import").style.display = "none"
+
+      count = 1
+      base = name
+      while @app.project.getSprite(name)?
+        count += 1
+        name = base+count
+
+      data = @selected_sprite.saveData().split(",")[1]
+
+      @app.client.sendRequest {
+        name: "write_project_file"
+        project: @app.project.id
+        file: "sprites/#{name}.png"
+        properties:
+          frames: @selected_sprite.frames.length
+          fps: @selected_sprite.fps
+        content: data
+      },(msg)=>
+        @app.project.updateSpriteList()
+
 
     document.querySelector("#project-contents-doc-import").addEventListener "click",()=>
       return if not @app.project?
@@ -86,6 +116,7 @@ class @ProjectDetails
     @music = []
     @maps = []
     @imported_sources = {}
+    @imported_sprites = {}
     @imported_doc = false
 
     document.querySelector("#project-contents-doc-import").classList.remove "done"
@@ -99,6 +130,7 @@ class @ProjectDetails
     document.querySelector("#project-contents-view .sprite-list").innerHTML = ""
     document.querySelector("#project-contents-view .sound-list").innerHTML = ""
     document.querySelector("#project-contents-view .music-list").innerHTML = ""
+    document.querySelector("#project-contents-view .asset-list").innerHTML = ""
     #document.querySelector("#project-contents-view .maps").innerHTML = ""
     document.querySelector("#project-contents-view .doc-render").innerHTML = ""
 
@@ -109,7 +141,7 @@ class @ProjectDetails
       else if t.indexOf("tutorial")>=0 or t.indexOf("tutoriel")>=0
         section = "doc"
 
-    if @project.type == "tutorial"
+    if @project.type in ["tutorial","library"]
       section = "doc"
 
     @setSection(section)
@@ -145,6 +177,12 @@ class @ProjectDetails
     },(msg)=>
       @setMusicList msg.files
 
+    @app.client.sendRequest {
+      name: "list_public_project_files"
+      project: @project.id
+      folder: "assets"
+    },(msg)=>
+      @setAssetList msg.files
     #@app.client.sendRequest {
     #  name: "list_public_project_files"
     #  project: @project.id
@@ -221,11 +259,11 @@ class @ProjectDetails
 
   setSelectedSource:(file)->
     @selected_source = file
-    for key of @sources
-      if key == file
-        document.getElementById("project-contents-view-source-#{key}").classList.add "selected"
-      else
-        document.getElementById("project-contents-view-source-#{key}").classList.remove "selected"
+    @source_folder.setSelectedItem file
+
+    source = @project_sources[file]
+    if source? and source.parent?
+      source.parent.setOpen true
 
     @editor.setValue @sources[file],-1
     return if not @app.project?
@@ -241,181 +279,79 @@ class @ProjectDetails
       document.querySelector("#project-contents-source-import span").innerText = @app.translator.get("Import source file to")+" "+@app.project.title
 
   setSourceList:(files)->
+    # for f in files
+    #   @createSourceEntry(f.file)
+    # return
+
+    table = {}
+    manager =
+      folder: "ms"
+      item: "source"
+      openItem:(item)=>
+        @setSelectedSource item
+        # table[item].play()
+
+    @project_sources = {}
+
+    project = JSON.parse(JSON.stringify(@project)) # create a clone
+    project.app = @app
+    project.notifyListeners = (source)=>
+      @sources[source.name] = source.content
+      if not @selected_source?
+        @setSelectedSource(source.name)
+
+    project.getFullURL = ()->
+      url = location.origin+"/#{project.owner}/#{project.slug}/"
+
+    folder = new ProjectFolder null,"source"
     for f in files
-      @createSourceEntry(f.file)
+      s = new ExploreProjectSource project,f.file
+      @project_sources[s.name] = s
+      folder.push s
+      table[s.name] = s
+
+    view = new FolderView manager,document.querySelector("#project-contents-view .code-list")
+    @source_folder = view
+    view.editable = false
+    view.rebuildList folder
     return
-
-  createSpriteBox:(file,prefs)->
-    div = document.createElement "div"
-    div.classList.add "sprite"
-
-    img = @createSpriteThumb(new Sprite(location.origin+"/#{@project.owner}/#{@project.slug}/#{file}",null,prefs))
-    div.appendChild img
-
-    if @app.project?
-      button = document.createElement "div"
-      i = document.createElement "i"
-      i.classList.add "fa"
-      i.classList.add "fa-download"
-      button.appendChild i
-      span = document.createElement "span"
-      span.innerText = @app.translator.get("Import to project")+" #{@app.project.title}"
-      button.appendChild span
-      clicked = false
-      button.addEventListener "click",()=>
-        return if clicked
-        clicked = true
-        source = new Image
-        source.crossOrigin = "Anonymous"
-        source.src = location.origin+"/#{@project.owner}/#{@project.slug}/#{file}"
-        source.onload = ()=>
-          canvas = document.createElement "canvas"
-          canvas.width = source.width
-          canvas.height = source.height
-          canvas.getContext("2d").drawImage source,0,0
-
-          name = file.split(".")[0]
-          count = 1
-          while @app.project.getSprite(name)?
-            count += 1
-            name = file.split(".")[0]+count
-
-          file = name+".png"
-
-          @app.client.sendRequest {
-            name: "write_project_file"
-            project: @app.project.id
-            file: "sprites/#{file}"
-            content: canvas.toDataURL().split(",")[1]
-            properties: prefs
-          },(msg)=>
-            @app.project.updateSpriteList()
-            div.style.width = "0px"
-            setTimeout (()=>div.style.display = "none"),1000
-
-      div.appendChild button
-
-    document.querySelector("#project-contents-view .sprite-list").appendChild div
-
-
-  createSpriteThumb:(sprite)->
-    canvas = document.createElement "canvas"
-    canvas.width = 100
-    canvas.height = 100
-    sprite.loaded = ()=>
-      context = canvas.getContext "2d"
-      frame = sprite.frames[0].getCanvas()
-      r = Math.min(100/frame.width,100/frame.height)
-      context.imageSmoothingEnabled = false
-      w = r*frame.width
-      h = r*frame.height
-      context.drawImage frame,50-w/2,50-h/2,w,h
-
-    mouseover = false
-    update = ()=>
-      if mouseover and sprite.frames.length>1
-        requestAnimationFrame ()=>update()
-
-      return if sprite.frames.length<1
-
-      dt = 1000/sprite.fps
-      t = Date.now()
-      frame = if mouseover then Math.floor(t/dt)%sprite.frames.length else 0
-      context = canvas.getContext "2d"
-      context.imageSmoothingEnabled = false
-      context.clearRect 0,0,100,100
-      frame = sprite.frames[frame].getCanvas()
-      r = Math.min(100/frame.width,100/frame.height)
-      w = r*frame.width
-      h = r*frame.height
-      context.drawImage frame,50-w/2,50-h/2,w,h
-
-    canvas.addEventListener "mouseenter",()=>
-      mouseover = true
-      update()
-
-    canvas.addEventListener "mouseout",()=>
-      mouseover = false
-
-    canvas.updateSprite = update
-
-    canvas
 
   setSpriteList:(files)->
+    table = {}
+    @sprites = {}
+    manager =
+      folder: "sprites"
+      item: "sprite"
+      openItem:(item)=>
+        @sprites_folder_view.setSelectedItem item
+        @selected_sprite = @sprites[item]
+        if @app.project? and not @imported_sprites[item]
+          document.querySelector("#project-contents-sprite-import span").innerText = @app.translator.get("Import %ITEM% to project %PROJECT%").replace("%ITEM%",item.replace(/-/g,"/")).replace("%PROJECT%",@app.project.title)
+          document.getElementById("project-contents-sprite-import").style.display = "block"
+        else
+          document.getElementById("project-contents-sprite-import").style.display = "none"
+
+
+    project = JSON.parse(JSON.stringify(@project)) # create a clone
+
+    project.getFullURL = ()->
+      url = location.origin+"/#{project.owner}/#{project.slug}/"
+
+    project.map_list = []
+    project.notifyListeners = ()->
+
+    folder = new ProjectFolder null,"sprites"
     for f in files
-      @createSpriteBox(f.file,f.properties)
+      s = new ProjectSprite project,f.file,null,null,f.properties
+      folder.push s
+      table[s.name] = s
+      @sprites[s.name] = s
+
+    @sprites_folder_view = new FolderView manager,document.querySelector("#project-contents-view .sprite-list")
+    @sprites_folder_view.editable = false
+    @sprites_folder_view.rebuildList folder
+    document.getElementById("project-contents-sprite-import").style.display = "none"
     return
-
-  createImportButton:(div,file,folder)->
-    button = document.createElement "div"
-    i = document.createElement "i"
-    i.classList.add "fa"
-    i.classList.add "fa-download"
-    button.appendChild i
-    span = document.createElement "span"
-    span.innerText = @app.translator.get("Import to project")+" #{@app.project.title}"
-    button.appendChild span
-    clicked = false
-    button.addEventListener "click",()=>
-      return if clicked
-      clicked = true
-      source = new Image
-      source.crossOrigin = "Anonymous"
-      source.src = location.origin+"/#{@project.owner}/#{@project.slug}/#{file}"
-      source.onload = ()=>
-        canvas = document.createElement "canvas"
-        canvas.width = source.width
-        canvas.height = source.height
-        canvas.getContext("2d").drawImage source,0,0
-
-        name = file.split(".")[0]
-        count = 1
-        while @app.project.getSprite(name)?
-          count += 1
-          name = file.split(".")[0]+count
-
-        file = name+".png"
-
-        @app.client.sendRequest {
-          name: "write_project_file"
-          project: @app.project.id
-          file: "sprites/#{file}"
-          content: canvas.toDataURL().split(",")[1]
-          properties: prefs
-        },(msg)=>
-          @app.project.updateSpriteList()
-          div.style.width = "0px"
-          setTimeout (()=>div.style.display = "none"),1000
-
-  createSoundBox:(file,prefs)->
-    div = document.createElement "div"
-    div.classList.add "sound"
-
-    img = new Image
-    img.src = location.origin+"/#{@project.owner}/#{@project.slug}/sounds_th/#{file.replace(".wav",".png")}"
-    div.appendChild img
-
-    div.appendChild document.createElement "br"
-    span = document.createElement "span"
-    span.innerText = file.split(".")[0]
-    div.appendChild span
-
-    div.addEventListener "click",()=>
-      url = location.origin+"/#{@project.owner}/#{@project.slug}/sounds/#{file}"
-      audio = new Audio(url)
-      audio.play()
-
-      funk = ()->
-        audio.pause()
-        document.body.removeEventListener "mousedown",funk
-
-      document.body.addEventListener "mousedown",funk
-
-
-#    if @app.project?
-#      createImportButton div
-
-    document.querySelector("#project-contents-view .sound-list").appendChild div
 
   setSoundList:(files)->
     if files.length>0
@@ -423,39 +359,28 @@ class @ProjectDetails
     else
       document.getElementById("project-contents-menu-sounds").style.display = "none"
 
+    table = {}
+    manager =
+      folder: "sounds"
+      item: "sound"
+      openItem:(item)->
+        table[item].play()
+
+    project = JSON.parse(JSON.stringify(@project)) # create a clone
+
+    project.getFullURL = ()->
+      url = location.origin+"/#{project.owner}/#{project.slug}/"
+
+    folder = new ProjectFolder null,"sounds"
     for f in files
-      @createSoundBox(f.file)
+      s = new ProjectSound project,f.file
+      folder.push s
+      table[s.name] = s
+
+    view = new FolderView manager,document.querySelector("#project-contents-view .sound-list")
+    view.editable = false
+    view.rebuildList folder
     return
-
-  createMusicBox:(file,prefs)->
-    div = document.createElement "div"
-    div.classList.add "music"
-
-    img = new Image
-    img.src = location.origin+"/#{@project.owner}/#{@project.slug}/music_th/#{file.replace(".mp3",".png")}"
-    div.appendChild img
-
-    div.appendChild document.createElement "br"
-    span = document.createElement "span"
-    span.innerText = file.split(".")[0]
-    div.appendChild span
-
-    div.addEventListener "click",()=>
-      url = location.origin+"/#{@project.owner}/#{@project.slug}/music/#{file}"
-      audio = new Audio(url)
-      audio.play()
-
-      funk = ()->
-        audio.pause()
-        document.body.removeEventListener "mousedown",funk
-
-      document.body.addEventListener "mousedown",funk
-
-
-#    if @app.project?
-#      createImportButton div
-
-    document.querySelector("#project-contents-view .music-list").appendChild div
 
   setMusicList:(files)->
     if files.length>0
@@ -463,9 +388,57 @@ class @ProjectDetails
     else
       document.getElementById("project-contents-menu-music").style.display = "none"
 
+    table = {}
+    manager =
+      folder: "music"
+      item: "music"
+      openItem:(item)->
+        table[item].play()
+
+    project = JSON.parse(JSON.stringify(@project)) # create a clone
+
+    project.getFullURL = ()=>
+      url = location.origin+"/#{project.owner}/#{project.slug}/"
+
+    folder = new ProjectFolder null,"sounds"
     for f in files
-      @createMusicBox(f.file,f.properties)
+      s = new ProjectMusic project,f.file
+      folder.push s
+      table[s.name] = s
+
+    view = new FolderView manager,document.querySelector("#project-contents-view .music-list")
+    view.editable = false
+    view.rebuildList folder
     return
+
+  setAssetList:(files)->
+    if files.length>0
+      document.getElementById("project-contents-menu-assets").style.display = "block"
+    else
+      document.getElementById("project-contents-menu-assets").style.display = "none"
+
+    table = {}
+    manager =
+      folder: "assets"
+      item: "asset"
+      openItem:(item)->
+
+    project = JSON.parse(JSON.stringify(@project)) # create a clone
+
+    project.getFullURL = ()->
+      url = location.origin+"/#{project.owner}/#{project.slug}/"
+
+    folder = new ProjectFolder null,"assets"
+    for f in files
+      s = new ProjectAsset project,f.file
+      folder.push s
+      table[s.name] = s
+
+    view = new FolderView manager,document.querySelector("#project-contents-view .asset-list")
+    view.editable = false
+    view.rebuildList folder
+    return
+
 
   setMapList:(files)->
     console.info files
@@ -546,7 +519,7 @@ class @ProjectDetails
       #buttons.appendChild @createButton "edit","Edit","green",()=>
       #  @editComment c
       #buttons.appendChild document.createElement "br"
-      buttons.appendChild @createButton "trash","Delete","red",()=>
+      buttons.appendChild @createButton "trash",@app.translator.get("Delete"),"red",()=>
         @deleteComment c
       div.appendChild buttons
 
@@ -585,10 +558,32 @@ class @ProjectDetails
   editComment:(id,text)->
 
   deleteComment:(c)->
-    if confirm @app.translator.get("Do you really want to delete this comment?")
+    ConfirmDialog.confirm @app.translator.get("Do you really want to delete this comment?"),@app.translator.get("Delete"),@app.translator.get("Cancel"),()=>
       @app.client.sendRequest {
         name: "delete_project_comment"
         project: @project.id
         id: c.id
       },(msg)=>
         @updateComments()
+
+
+class @ExploreProjectSource
+  constructor:(@project,@file,@size=0)->
+    @name = @file.split(".")[0]
+    @ext = @file.split(".")[1]
+    @filename = @file
+    @file = "ms/#{@file}"
+    s = @name.split "-"
+    @shortname = s[s.length-1]
+    @path_prefix = if s.length>1 then s.splice(0,s.length-1).join("-")+"-" else ""
+
+    @content = ""
+    @fetched = false
+    @reload()
+
+  reload:()->
+    fetch(@project.getFullURL()+"ms/#{@name}.ms").then (result)=>
+      result.text().then (text)=>
+        @content = text
+        @fetched = true
+        @project.notifyListeners @

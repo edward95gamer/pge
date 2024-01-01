@@ -4,7 +4,7 @@ cookieParser = require('cookie-parser')
 fs = require "fs"
 path = require "path"
 DB = require __dirname+"/db/db.js"
-FileStorage = require __dirname+"/filestorage/filestorage.js"
+FileStorage = require __dirname+"/filestorage/hashedstorage.js"
 Content = require __dirname+"/content/content.js"
 WebApp = require __dirname+"/webapp.js"
 Session = require __dirname+"/session/session.js"
@@ -72,6 +72,7 @@ class @Server
         app.use(express.static(folder))
 
     app.use(express.static(static_files))
+    app.use("/microstudio.wiki",express.static("../microstudio.wiki",{dotfiles:"ignore"}))
     app.use("/lib/fontlib/ubuntu",express.static("node_modules/@fontsource/ubuntu"))
     app.use("/lib/fontlib/ubuntu-mono",express.static("node_modules/@fontsource/ubuntu-mono"))
     app.use("/lib/fontlib/source-sans-pro",express.static("node_modules/@fontsource/source-sans-pro"))
@@ -83,8 +84,14 @@ class @Server
     app.use("/lib/jquery-ui",express.static("node_modules/jquery-ui-dist"))
     app.use("/lib/pixijs",express.static("node_modules/pixi.js/dist/browser"))
     app.use("/lib/babylonjs",express.static("node_modules/babylonjs"))
+    app.use("/lib/babylonjs",express.static("node_modules/babylonjs-loaders"))
     app.use("/lib/matterjs",express.static("node_modules/matter-js/build"))
     app.use("/lib/cannonjs",express.static("node_modules/cannon/build"))
+    app.use("/lib/brython",express.static("node_modules/brython"))
+    app.use("/lib/fengari",express.static("node_modules/fengari-web/dist"))
+    app.use("/lib/qrcode",express.static("node_modules/qrcode/build"))
+    app.use("/lib/wavefile",express.static("node_modules/wavefile/dist"))
+    app.use("/lib/lamejs/lame.min.js",express.static("node_modules/lamejs/lame.min.js"))
 
     @db = new DB "#{@app_data}/data",(db)=>
       for plugin in @plugins

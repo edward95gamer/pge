@@ -46,7 +46,14 @@ class @ExportFeatures
                 #console.info "reading: "+JSON.stringify f
                 @webapp.server.content.files.read "#{user.id}/#{project.id}/#{folder}/#{f.file}",fileType,(content)=>
                   if content?
-                    zip.folder(folder).file(f.file,content)
+                    name = f.file.replace(/-/g,"/")
+                    if name.endsWith(".ms")
+                      switch project.language
+                        when "javascript" then name = name.replace ".ms",".js"
+                        when "python" then name = name.replace ".ms",".py"
+                        when "lua" then name = name.replace ".ms",".lua"
+
+                    zip.folder(folder).file(name,content)
                     #zip.folder(folder).file("#{f.file}.meta", JSON.stringify f)
                   queue.next()
           queue.next()
@@ -88,6 +95,10 @@ class @ExportFeatures
         {
           name: "assets",
           fileType: "binary"
+        },
+        {
+          name: "assets_th",
+          fileType: "binary"
         }
       ]
 
@@ -101,12 +112,17 @@ class @ExportFeatures
     platforms: project.platforms
     controls: project.controls
     type: project.type
+    language: project.language
     graphics: project.graphics
     libs: project.libs
+    tabs: project.tabs
+    plugins: project.plugins
+    libraries: project.libraries
     date_created: project.date_created
     last_modified: project.last_modified
     first_published: project.first_published
     files: project.files
+    description: project.description
 
   addSpritesExport:()->
     # /user/project[/code]/export/sprites/
@@ -134,7 +150,7 @@ class @ExportFeatures
                 #console.info "reading: "+JSON.stringify s
                 @webapp.server.content.files.read "#{user.id}/#{project.id}/sprites/#{s.file}","binary",(content)=>
                   if content?
-                    zip.file(s.file,content)
+                    zip.file(s.file.replace(/-/g,"/"),content)
                   queue.next()
           queue.next()
 
@@ -167,11 +183,15 @@ class @ExportFeatures
       # manifest.json
       maps_dict = {}
       images = []
-      assets = []
+      assets_list = []
       fonts = []
       sounds_list = []
       music_list = []
       fullsource = "\n\n"
+
+      wrapsource = (s)->s
+      if project.language == "microscript_v2" # this is to prevent local variables contamination between files
+        wrapsource = (s)->"\nfunction()\n#{s}\nend()\n"
 
       libs = []
       if project.graphics? and typeof project.graphics == "string"
@@ -184,13 +204,23 @@ class @ExportFeatures
         if lib?
           libs.push lib.lib_path
 
+      proglang = @webapp.concatenator.language_engines[project.language]
+      if proglang? and proglang.scripts
+        for s in proglang.scripts
+          libs.push "../static#{s}"
+
+      if proglang? and proglang.lib_path?
+        for s in proglang.lib_path
+          libs.push s
+
       queue = new JobQueue ()=>
         resources = JSON.stringify
           images: images
-          assets: assets
+          assets: assets_list
           maps: maps_dict
           sounds: sounds_list
           music: music_list
+
 
         resources = "var resources = #{resources};\n"
         resources += "var graphics = \"#{project.graphics}\";\n"
@@ -210,6 +240,7 @@ class @ExportFeatures
             aspect: project.aspect
             libs: JSON.stringify project.libs
             code: fullsource
+            language: project.language
 
         zip.file("index.html",html)
 
@@ -266,7 +297,7 @@ class @ExportFeatures
                 #console.info "reading: "+JSON.stringify map
                 @webapp.server.content.files.read "#{user.id}/#{project.id}/maps/#{map.file}","text",(content)=>
                   if content?
-                    maps_dict[map.file.split(".")[0]] = content
+                    maps_dict[map.file.split(".")[0].replace(/-/g,"/")] = content
                   queue.next()
           queue.next()
 
@@ -305,7 +336,7 @@ class @ExportFeatures
                 @webapp.server.content.files.read "#{user.id}/#{project.id}/assets/#{asset.file}","binary",(content)=>
                   if content?
                     zip.file("assets/#{asset.file}",content)
-                    assets.push asset
+                    assets_list.push asset
                   queue.next()
           queue.next()
 
@@ -329,7 +360,7 @@ class @ExportFeatures
                 #console.info "reading: "+JSON.stringify src
                 @webapp.server.content.files.read "#{user.id}/#{project.id}/ms/#{src.file}","text",(content)=>
                   if content?
-                    fullsource += content+"\n\n"
+                    fullsource += wrapsource(content)+"\n\n"
                   queue.next()
 
           queue.add ()=>

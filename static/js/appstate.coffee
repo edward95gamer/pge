@@ -53,18 +53,10 @@ class @AppState
         else
           s = location.pathname.split("/")
           if s[2]? and s[3]?
-            if @app.explore.projects?
-              p = @app.explore.findProject(s[2],s[3])
-              if p
-                @app.explore.openProject(p)
-                @app.appui.setMainSection "explore"
-            else
-              @app.explore.update ()=>
-                p = @app.explore.findProject(s[2],s[3])
-                if p
-                  @app.explore.openProject(p)
-                  @app.appui.setMainSection "explore"
-
+            p = @app.explore.findProject(s[2],s[3])
+            if p
+              @app.explore.openProject(p)
+              @app.appui.setMainSection "explore"
 
   initState:()->
     if location.pathname.startsWith("/login/")
@@ -109,6 +101,11 @@ class @AppState
       for p in ["about","tutorials","explore","documentation"]
         if location.pathname.startsWith("/#{p}/") or location.pathname == "/#{p}"
           history.replaceState {name:p},"",location.pathname
+          if p == "explore"
+            s = location.pathname.split("/")[2]
+            if s in ["library","plugin","tutorial","app","all"]
+              @app.explore.setProjectType s
+
           return @app.appui.setMainSection ((p)=>{"documentation":"help"}[p] or p)(p)
 
       if @app.user?

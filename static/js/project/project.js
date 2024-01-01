@@ -2,10 +2,9 @@ var bind = function(fn, me){ return function(){ return fn.apply(me, arguments); 
 
 this.Project = (function() {
   function Project(app, data) {
-    var f, k, len, ref;
+    var f, k, len1, ref;
     this.app = app;
     this.setAssetList = bind(this.setAssetList, this);
-    this.setMapList = bind(this.setMapList, this);
     this.setMusicList = bind(this.setMusicList, this);
     this.setSoundList = bind(this.setSoundList, this);
     this.setMapList = bind(this.setMapList, this);
@@ -20,20 +19,28 @@ this.Project = (function() {
     this.description = data.description;
     this.tags = data.tags;
     this["public"] = data["public"];
+    this.unlisted = data.unlisted;
     this.platforms = data.platforms;
     this.controls = data.controls;
     this.type = data.type;
     this.orientation = data.orientation;
     this.graphics = data.graphics || "M1";
+    this.language = data.language || "microscript_v1_i";
     this.libs = data.libs || [];
     this.aspect = data.aspect;
     this.users = data.users;
+    this.tabs = data.tabs;
+    this.plugins = data.plugins;
+    this.libraries = data.libraries;
+    this.properties = data.properties || {};
+    this.flags = data.flags || {};
     this.file_types = ["source", "sprite", "map", "asset", "sound", "music"];
     ref = this.file_types;
-    for (k = 0, len = ref.length; k < len; k++) {
+    for (k = 0, len1 = ref.length; k < len1; k++) {
       f = ref[k];
       this[f + "_list"] = [];
       this[f + "_table"] = {};
+      this[f + "_folder"] = new ProjectFolder(null, f);
     }
     this.locks = {};
     this.lock_time = {};
@@ -62,9 +69,9 @@ this.Project = (function() {
   };
 
   Project.prototype.notifyListeners = function(change) {
-    var k, len, lis, ref;
+    var k, len1, lis, ref;
     ref = this.listeners;
-    for (k = 0, len = ref.length; k < len; k++) {
+    for (k = 0, len1 = ref.length; k < len1; k++) {
       lis = ref[k];
       lis.projectUpdate(change);
     }
@@ -76,9 +83,7 @@ this.Project = (function() {
     this.updateMapList();
     this.updateSoundList();
     this.updateMusicList();
-    if (this.graphics === "M3D") {
-      this.updateAssetList();
-    }
+    this.updateAssetList();
     return this.loadDoc();
   };
 
@@ -188,11 +193,10 @@ this.Project = (function() {
   };
 
   Project.prototype.changeSpriteName = function(old, name) {
-    var changed, i, j, k, l, len, map, n, ref, ref1, ref2, s;
-    this.sprite_table[name] = this.sprite_table[old];
-    delete this.sprite_table[old];
+    var changed, i, j, k, l, len1, map, n, ref, ref1, ref2, s;
+    old = old.replace(/-/g, "/");
     ref = this.map_list;
-    for (k = 0, len = ref.length; k < len; k++) {
+    for (k = 0, len1 = ref.length; k < len1; k++) {
       map = ref[k];
       changed = false;
       for (i = l = 0, ref1 = map.width - 1; l <= ref1; i = l += 1) {
@@ -243,6 +247,12 @@ this.Project = (function() {
     } else if (msg.file.indexOf("sprites/") === 0) {
       name = msg.file.substring("sprites/".length, msg.file.indexOf(".png"));
       if (this.sprite_table[name] != null) {
+        if (msg.properties != null) {
+          this.sprite_table[name].properties = msg.properties;
+          if (msg.properties.fps != null) {
+            this.sprite_table[name].fps = msg.properties.fps;
+          }
+        }
         return this.sprite_table[name].reload((function(_this) {
           return function() {
             if (name === _this.app.sprite_editor.selected_sprite) {
@@ -260,6 +270,21 @@ this.Project = (function() {
       } else {
         return this.updateMapList();
       }
+    } else if (msg.file.indexOf("sounds/") === 0) {
+      name = msg.file.substring("sounds/".length, msg.file.length).split(".")[0];
+      if (this.sound_table[name] == null) {
+        return this.updateSoundList();
+      }
+    } else if (msg.file.indexOf("music/") === 0) {
+      name = msg.file.substring("music/".length, msg.file.length).split(".")[0];
+      if (this.music_table[name] == null) {
+        return this.updateMusicList();
+      }
+    } else if (msg.file.indexOf("assets/") === 0) {
+      name = msg.file.substring("assets/".length, msg.file.length).split(".")[0];
+      if (this.asset_table[name] == null) {
+        return this.updateAssetList();
+      }
     }
   };
 
@@ -270,6 +295,10 @@ this.Project = (function() {
       return this.updateSpriteList();
     } else if (msg.file.indexOf("maps/") === 0) {
       return this.updateMapList();
+    } else if (msg.file.indexOf("sounds/") === 0) {
+      return this.updateSoundList();
+    } else if (msg.file.indexOf("music/") === 0) {
+      return this.updateMusicList();
     }
   };
 
@@ -289,6 +318,7 @@ this.Project = (function() {
     s = new ProjectSprite(this, sprite.file, null, null, sprite.properties, sprite.size);
     this.sprite_table[s.name] = s;
     this.sprite_list.push(s);
+    this.sprite_folder.push(s);
     return s;
   };
 
@@ -315,6 +345,7 @@ this.Project = (function() {
     sprite = new ProjectSprite(this, filename + ".png", width, height);
     this.sprite_table[sprite.name] = sprite;
     this.sprite_list.push(sprite);
+    this.sprite_folder.push(sprite);
     this.notifyListeners("spritelist");
     return sprite;
   };
@@ -324,6 +355,7 @@ this.Project = (function() {
     s = new ProjectSource(this, file.file, file.size);
     this.source_table[s.name] = s;
     this.source_list.push(s);
+    this.source_folder.push(s);
     return s;
   };
 
@@ -331,40 +363,46 @@ this.Project = (function() {
     return this.source_table[name];
   };
 
-  Project.prototype.createSource = function() {
+  Project.prototype.createSource = function(basename) {
     var count, filename, source;
-    count = 1;
-    while (true) {
-      filename = "source" + (count++);
-      if (this.getSource(filename) == null) {
-        break;
-      }
+    if (basename == null) {
+      basename = "source";
+    }
+    count = 2;
+    filename = basename;
+    while (this.getSource(filename) != null) {
+      filename = "" + basename + (count++);
     }
     source = new ProjectSource(this, filename + ".ms");
+    source.fetched = true;
     this.source_table[source.name] = source;
     this.source_list.push(source);
+    this.source_folder.push(source);
     this.notifyListeners("sourcelist");
     return source;
   };
 
   Project.prototype.getFullSource = function() {
-    var k, len, ref, res, s;
+    var k, len1, ref, res, s;
     res = "";
     ref = this.source_list;
-    for (k = 0, len = ref.length; k < len; k++) {
+    for (k = 0, len1 = ref.length; k < len1; k++) {
       s = ref[k];
       res += s + "\n";
     }
     return res;
   };
 
-  Project.prototype.setFileList = function(list, target_list, target_table, get, add, notification) {
-    var f, i, k, l, len, len1, li, n, ref, s;
+  Project.prototype.setFileList = function(list, target_list, target_table, get, add, item_id) {
+    var f, folder, i, k, l, len1, len2, li, n, notification, ref, s;
+    notification = item_id + "list";
     li = [];
-    for (k = 0, len = list.length; k < len; k++) {
+    for (k = 0, len1 = list.length; k < len1; k++) {
       f = list[k];
       li.push(f.file);
     }
+    folder = this[item_id + "_folder"];
+    folder.removeNoMatch(li);
     for (i = l = ref = target_list.length - 1; l >= 0; i = l += -1) {
       s = target_list[i];
       if (li.indexOf(s.filename) < 0) {
@@ -372,41 +410,39 @@ this.Project = (function() {
         delete target_table[s.name];
       }
     }
-    for (n = 0, len1 = list.length; n < len1; n++) {
+    for (n = 0, len2 = list.length; n < len2; n++) {
       s = list[n];
       if (!this[get](s.file.split(".")[0])) {
         this[add](s);
       }
     }
+    folder.removeEmptyFolders();
+    folder.sort();
     return this.notifyListeners(notification);
   };
 
   Project.prototype.setSourceList = function(list) {
-    return this.setFileList(list, this.source_list, this.source_table, "getSource", "addSource", "sourcelist");
+    return this.setFileList(list, this.source_list, this.source_table, "getSource", "addSource", "source");
   };
 
   Project.prototype.setSpriteList = function(list) {
-    return this.setFileList(list, this.sprite_list, this.sprite_table, "getSprite", "addSprite", "spritelist");
+    return this.setFileList(list, this.sprite_list, this.sprite_table, "getSprite", "addSprite", "sprite");
   };
 
   Project.prototype.setMapList = function(list) {
-    return this.setFileList(list, this.map_list, this.map_table, "getMap", "addMap", "maplist");
+    return this.setFileList(list, this.map_list, this.map_table, "getMap", "addMap", "map");
   };
 
   Project.prototype.setSoundList = function(list) {
-    return this.setFileList(list, this.sound_list, this.sound_table, "getSound", "addSound", "soundlist");
+    return this.setFileList(list, this.sound_list, this.sound_table, "getSound", "addSound", "sound");
   };
 
   Project.prototype.setMusicList = function(list) {
-    return this.setFileList(list, this.music_list, this.music_table, "getMusic", "addMusic", "musiclist");
-  };
-
-  Project.prototype.setMapList = function(list) {
-    return this.setFileList(list, this.map_list, this.map_table, "getMap", "addMap", "maplist");
+    return this.setFileList(list, this.music_list, this.music_table, "getMusic", "addMusic", "music");
   };
 
   Project.prototype.setAssetList = function(list) {
-    return this.setFileList(list, this.asset_list, this.asset_table, "getAsset", "addAsset", "assetlist");
+    return this.setFileList(list, this.asset_list, this.asset_table, "getAsset", "addAsset", "asset");
   };
 
   Project.prototype.addMap = function(file) {
@@ -414,6 +450,7 @@ this.Project = (function() {
     m = new ProjectMap(this, file.file, file.size);
     this.map_table[m.name] = m;
     this.map_list.push(m);
+    this.map_folder.push(m);
     return m;
   };
 
@@ -426,6 +463,7 @@ this.Project = (function() {
     m = new ProjectAsset(this, file.file, file.size);
     this.asset_table[m.name] = m;
     this.asset_list.push(m);
+    this.asset_folder.push(m);
     return m;
   };
 
@@ -433,17 +471,18 @@ this.Project = (function() {
     return this.asset_table[name];
   };
 
-  Project.prototype.createMap = function() {
-    var count, filename, m;
-    count = 1;
-    while (true) {
-      filename = "map" + (count++);
-      if (this.getMap(filename) == null) {
-        break;
-      }
+  Project.prototype.createMap = function(basename) {
+    var count, m, name;
+    if (basename == null) {
+      basename = "map";
+    }
+    name = basename;
+    count = 2;
+    while (this.getMap(name)) {
+      name = "" + basename + (count++);
     }
     m = this.addMap({
-      file: filename + ".json",
+      file: name + ".json",
       size: 0
     });
     this.notifyListeners("maplist");
@@ -472,6 +511,7 @@ this.Project = (function() {
     }
     this.sound_table[sound.name] = sound;
     this.sound_list.push(sound);
+    this.sound_folder.push(sound);
     this.notifyListeners("soundlist");
     return sound;
   };
@@ -481,6 +521,7 @@ this.Project = (function() {
     m = new ProjectSound(this, file.file, file.size);
     this.sound_table[m.name] = m;
     this.sound_list.push(m);
+    this.sound_folder.push(m);
     return m;
   };
 
@@ -510,6 +551,7 @@ this.Project = (function() {
     }
     this.music_table[music.name] = music;
     this.music_list.push(music);
+    this.music_folder.push(music);
     this.notifyListeners("musiclist");
     return music;
   };
@@ -519,11 +561,39 @@ this.Project = (function() {
     m = new ProjectMusic(this, file.file, file.size);
     this.music_table[m.name] = m;
     this.music_list.push(m);
+    this.music_folder.push(m);
     return m;
   };
 
   Project.prototype.getMusic = function(name) {
     return this.music_table[name];
+  };
+
+  Project.prototype.createAsset = function(name, thumbnail, size, ext) {
+    var asset, count, filename;
+    if (name == null) {
+      name = "asset";
+    }
+    if (this.getAsset(name)) {
+      count = 2;
+      while (true) {
+        filename = "" + name + (count++);
+        if (this.getAsset(filename) == null) {
+          break;
+        }
+      }
+    } else {
+      filename = name;
+    }
+    asset = new ProjectAsset(this, filename + ("." + ext), size);
+    if (thumbnail) {
+      asset.thumbnail_url = thumbnail;
+    }
+    this.asset_table[asset.name] = asset;
+    this.asset_list.push(asset);
+    this.asset_folder.push(asset);
+    this.notifyListeners("assetlist");
+    return asset;
   };
 
   Project.prototype.setTitle = function(title) {
@@ -555,6 +625,10 @@ this.Project = (function() {
 
   Project.prototype.setGraphics = function(graphics) {
     this.graphics = graphics;
+  };
+
+  Project.prototype.setLanguage = function(language) {
+    this.language = language;
   };
 
   Project.prototype.addPendingChange = function(item) {
@@ -605,18 +679,199 @@ this.Project = (function() {
   };
 
   Project.prototype.getSize = function() {
-    var k, l, len, len1, ref, s, size, t, type;
+    var k, l, len1, len2, ref, s, size, t, type;
     size = 0;
     ref = this.file_types;
-    for (k = 0, len = ref.length; k < len; k++) {
+    for (k = 0, len1 = ref.length; k < len1; k++) {
       type = ref[k];
       t = this[type + "_list"];
-      for (l = 0, len1 = t.length; l < len1; l++) {
+      for (l = 0, len2 = t.length; l < len2; l++) {
         s = t[l];
         size += s.size;
       }
     }
     return size;
+  };
+
+  Project.prototype.writeFile = function(name, content, options) {
+    var folder, i, k, ref;
+    name = name.split("/");
+    folder = name[0];
+    for (i = k = 0, ref = name.length - 1; 0 <= ref ? k <= ref : k >= ref; i = 0 <= ref ? ++k : --k) {
+      name[i] = RegexLib.fixFilename(name[i]);
+    }
+    name = name.slice(1).join("-");
+    switch (folder) {
+      case "ms":
+        return this.writeSourceFile(name, content);
+      case "sprites":
+        return this.writeSpriteFile(name, content, options.frames, options.fps);
+      case "maps":
+        return this.writeMapFile(name, content);
+      case "sounds":
+        return this.writeSoundFile(name, content);
+      case "music":
+        return this.writeMusicFile(name, content);
+      case "assets":
+        return this.writeAssetFile(name, content, options.ext);
+    }
+  };
+
+  Project.prototype.writeSourceFile = function(name, content) {
+    return this.app.client.sendRequest({
+      name: "write_project_file",
+      project: this.id,
+      file: "ms/" + name + ".ms",
+      content: content
+    }, (function(_this) {
+      return function(msg) {
+        return _this.updateSourceList();
+      };
+    })(this));
+  };
+
+  Project.prototype.writeSoundFile = function(name, content) {
+    var audioContext, base64ToArrayBuffer;
+    base64ToArrayBuffer = function(base64) {
+      var binary_string, bytes, i, k, len, ref;
+      binary_string = window.atob(base64);
+      len = binary_string.length;
+      bytes = new Uint8Array(len);
+      for (i = k = 0, ref = len - 1; k <= ref; i = k += 1) {
+        bytes[i] = binary_string.charCodeAt(i);
+      }
+      return bytes.buffer;
+    };
+    audioContext = new AudioContext();
+    return audioContext.decodeAudioData(base64ToArrayBuffer(content), (function(_this) {
+      return function(decoded) {
+        var thumbnailer;
+        console.info(decoded);
+        thumbnailer = new SoundThumbnailer(decoded, 96, 64);
+        return _this.app.client.sendRequest({
+          name: "write_project_file",
+          project: _this.id,
+          file: "sounds/" + name + ".wav",
+          properties: {},
+          content: content,
+          thumbnail: thumbnailer.canvas.toDataURL().split(",")[1]
+        }, function(msg) {
+          console.info(msg);
+          return _this.updateSoundList();
+        });
+      };
+    })(this));
+  };
+
+  Project.prototype.writeMusicFile = function(name, content) {
+    var audioContext, base64ToArrayBuffer;
+    base64ToArrayBuffer = function(base64) {
+      var binary_string, bytes, i, k, len, ref;
+      binary_string = window.atob(base64);
+      len = binary_string.length;
+      bytes = new Uint8Array(len);
+      for (i = k = 0, ref = len - 1; k <= ref; i = k += 1) {
+        bytes[i] = binary_string.charCodeAt(i);
+      }
+      return bytes.buffer;
+    };
+    audioContext = new AudioContext();
+    return audioContext.decodeAudioData(base64ToArrayBuffer(content), (function(_this) {
+      return function(decoded) {
+        var thumbnailer;
+        console.info(decoded);
+        thumbnailer = new SoundThumbnailer(decoded, 192, 64, "hsl(200,80%,60%)");
+        return _this.app.client.sendRequest({
+          name: "write_project_file",
+          project: _this.id,
+          file: "music/" + name + ".mp3",
+          properties: {},
+          content: content,
+          thumbnail: thumbnailer.canvas.toDataURL().split(",")[1]
+        }, function(msg) {
+          console.info(msg);
+          return _this.updateMusicList();
+        });
+      };
+    })(this));
+  };
+
+  Project.prototype.writeSpriteFile = function(name, content, frames, fps) {
+    return this.app.client.sendRequest({
+      name: "write_project_file",
+      project: this.id,
+      file: "sprites/" + name + ".png",
+      properties: {
+        frames: frames,
+        fps: fps
+      },
+      content: content
+    }, (function(_this) {
+      return function(msg) {
+        return _this.fileUpdated({
+          file: "sprites/" + name + ".png",
+          properties: {
+            frames: frames,
+            fps: fps
+          }
+        });
+      };
+    })(this));
+  };
+
+  Project.prototype.writeMapFile = function(name, content) {
+    return this.app.client.sendRequest({
+      name: "write_project_file",
+      project: this.id,
+      file: "maps/" + name + ".json",
+      content: content
+    }, (function(_this) {
+      return function(msg) {
+        _this.fileUpdated({
+          file: "maps/" + name + ".json"
+        });
+        return _this.updateMapList();
+      };
+    })(this));
+  };
+
+  Project.prototype.writeAssetFile = function(name, content, ext) {
+    var send, thumbnail;
+    if (ext === "json") {
+      content = JSON.stringify(content);
+    }
+    thumbnail = void 0;
+    if (ext === "txt" || ext === "csv" || ext === "json" || ext === "obj") {
+      thumbnail = this.app.assets_manager.text_viewer.createThumbnail(content, ext);
+      thumbnail = thumbnail.toDataURL().split(",")[1];
+    }
+    if (ext === "obj") {
+      content = btoa(content);
+    }
+    send = (function(_this) {
+      return function() {
+        return _this.app.client.sendRequest({
+          name: "write_project_file",
+          project: _this.id,
+          file: "assets/" + name + "." + ext,
+          content: content,
+          thumbnail: thumbnail
+        }, function(msg) {
+          return _this.updateAssetList();
+        });
+      };
+    })(this);
+    if (ext === "png" || ext === "jpg") {
+      this.app.assets_manager.image_viewer.createThumbnail(content, (function(_this) {
+        return function(canvas) {
+          thumbnail = canvas.toDataURL().split(",")[1];
+          content = content.split(",")[1];
+          return send();
+        };
+      })(this));
+      return;
+    }
+    return send();
   };
 
   return Project;

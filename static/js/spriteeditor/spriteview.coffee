@@ -5,6 +5,19 @@ class @SpriteView
     @canvas.height = 400
     @sprite = new Sprite(32,32)
 
+
+    @canvas.addEventListener "touchstart", (event) =>
+      if event.touches? and event.touches[0]?
+        event.preventDefault() # prevents a mousedown event from being triggered
+        event.touches[0].stopPropagation = ()->event.stopPropagation()
+        @mouseDown(event.touches[0])
+
+    document.addEventListener "touchmove", (event) =>
+      @mouseMove(event.touches[0]) if event.touches? and event.touches[0]?
+
+    document.addEventListener "touchend" , (event) => @mouseUp()
+    @canvas.addEventListener "touchcancel" , (event) => @mouseOut()
+
     @canvas.addEventListener "mousedown", (event) => @mouseDown(event)
     document.addEventListener "mousemove", (event) => @mouseMove(event)
     @canvas.addEventListener "mouseout", (event) => @mouseOut(event)
@@ -139,8 +152,8 @@ class @SpriteView
       @scaleZoom(@sprite.zoom.zoom/@zoom)
       view.scrollTo(@sprite.zoom.left,@sprite.zoom.top)
 
-  getPattern:()->
-    return @pattern if @pattern?
+  addPattern:()->
+    return if @pattern?
     c = document.createElement "canvas"
     c.width = 64
     c.height = 64
@@ -148,17 +161,26 @@ class @SpriteView
     data = context.getImageData 0,0,c.width,1
     for line in [0..c.height-1] by 1
       for i in [0..c.width-1] by 1
-        value = 32+Math.random()*32
+        value = 128+Math.random()*64-32
         data.data[i*4] = value
         data.data[i*4+1] = value
         data.data[i*4+2] = value
-        data.data[i*4+3] = 255
+        data.data[i*4+3] = 64
 
       context.putImageData data,0,line
 
-    @pattern = c
-    document.querySelector(".spriteeditor canvas").style["background-image"] = "url(#{c.toDataURL()})"
+    @pattern = c.toDataURL()
+
+    document.querySelector(".spriteeditor canvas").style["background-image"] = "url(#{@pattern})"
     document.querySelector(".spriteeditor canvas").style["background-repeat"] = "repeat"
+    @updateBackgroundColor()
+
+  updateBackgroundColor:()->
+    if @editor.background_color_picker?
+      c = @editor.background_color_picker.color
+      document.querySelector(".spriteeditor canvas").style["background-color"] = c
+    else
+      document.querySelector(".spriteeditor canvas").style["background-color"] = "#000"
 
   setColor:(@color)->
 
@@ -251,13 +273,7 @@ class @SpriteView
     context = @canvas.getContext "2d"
     context.clearRect 0,0,@canvas.width,@canvas.height
     context.imageSmoothingEnabled = false
-    p = @getPattern()
-    #size = @canvas.width/@sprite.width*p.width/4
-    #w = Math.floor(@canvas.width/size)
-    #h = Math.floor(@canvas.height/size)
-    #for i in [0..w] by 1
-    #  for j in [0..h] by 1
-    #    context.drawImage p,i*size,j*size,size,size
+    @addPattern()
 
     if @sprite.frames.length>1
       f = @sprite.frames[(@sprite.current_frame+@sprite.frames.length-1)%@sprite.frames.length]
@@ -510,6 +526,7 @@ class @SpriteView
           @selection.y += y-@mouse_y
           @mouse_x = x
           @mouse_y = y
+          @editor.setCoordinates x,y
           context = @getFrame().getContext()
           context.clearRect 0,0,@getFrame().canvas.width,@getFrame().canvas.height
           context.drawImage @floating_selection.bg,0,0
@@ -523,6 +540,7 @@ class @SpriteView
         @selection.y = Math.max(0,Math.min(@sprite.height-@selection.h,@selection.y))
         @mouse_x = x
         @mouse_y = y
+        @editor.setCoordinates x,y
         @update()
 
       return
@@ -534,6 +552,7 @@ class @SpriteView
     if x != @mouse_x or y != @mouse_y
       @mouse_x = x
       @mouse_y = y
+      @editor.setCoordinates x,y
 
       if @mousepressed
         if @tile
@@ -586,3 +605,101 @@ class @SpriteView
   mouseOut:(event)->
     @mouse_over = false
     @update()
+    @editor.setCoordinates -1,-1
+
+  flipSprite:(direction)->
+    if @editor.tool.selectiontool
+      if @selection?
+        @sprite.undo = new Undo() if not @sprite.undo?
+        @sprite.undo.pushState @sprite.clone() if @sprite.undo.empty()
+        fg = document.createElement "canvas"
+        fg.width = @selection.w
+        fg.height = @selection.h
+        context = fg.getContext "2d"
+        if direction == "horizontal"
+          context.translate @selection.w,0
+          context.scale -1,1
+        else
+          context.translate 0,@selection.h
+          context.scale 1,-1
+
+        if not @floating_selection?
+          context.drawImage @getFrame().canvas,-@selection.x,-@selection.y
+          context = @getFrame().canvas.getContext("2d")
+          context.clearRect @selection.x,@selection.y,@selection.w,@selection.h
+          bg = document.createElement "canvas"
+          bg.width = @getFrame().canvas.width
+          bg.height = @getFrame().canvas.height
+          bg.getContext("2d").drawImage @getFrame().canvas,0,0
+          context.drawImage fg,@selection.x,@selection.y
+          @floating_selection =
+            bg: bg
+            fg: fg
+        else
+          context.drawImage @floating_selection.fg,0,0
+          @floating_selection.fg = fg
+
+          context = @getFrame().getContext()
+          context.clearRect 0,0,@getFrame().canvas.width,@getFrame().canvas.height
+          context.drawImage @floating_selection.bg,0,0
+          context.drawImage @floating_selection.fg,@selection.x,@selection.y
+
+        @sprite.undo.pushState @sprite.clone()
+        @update()
+        @editor.spriteChanged()
+
+  rotateSprite:(direction)->
+    if @editor.tool.selectiontool
+      if @selection?
+        @sprite.undo = new Undo() if not @sprite.undo?
+        @sprite.undo.pushState @sprite.clone() if @sprite.undo.empty()
+        fg = document.createElement "canvas"
+        fg.width = @selection.h
+        fg.height = @selection.w
+        context = fg.getContext "2d"
+        context.translate fg.width/2,fg.height/2
+        context.rotate direction*Math.PI/2
+
+        cx = @selection.x+@selection.w/2
+        cy = @selection.y+@selection.h/2
+        nw = @selection.h
+        nh = @selection.w
+        nx = Math.round(cx-nw/2+.01*direction)
+        ny = Math.round(cy-nh/2+.01*direction)
+
+        if not @floating_selection?
+          context.drawImage @getFrame().canvas,-@selection.x-@selection.w/2,-@selection.y-@selection.h/2
+          context = @getFrame().canvas.getContext("2d")
+          context.clearRect @selection.x,@selection.y,@selection.w,@selection.h
+
+          bg = document.createElement "canvas"
+          bg.width = @getFrame().canvas.width
+          bg.height = @getFrame().canvas.height
+          bg.getContext("2d").drawImage @getFrame().canvas,0,0
+
+          context.drawImage fg,nx,ny
+          @selection.x = nx
+          @selection.y = ny
+          @selection.w = nw
+          @selection.h = nh
+
+          @floating_selection =
+            bg: bg
+            fg: fg
+        else
+          context.drawImage @floating_selection.fg,-@floating_selection.fg.width/2,-@floating_selection.fg.height/2
+          @floating_selection.fg = fg
+
+          @selection.x = nx
+          @selection.y = ny
+          @selection.w = nw
+          @selection.h = nh
+
+          context = @getFrame().getContext()
+          context.clearRect 0,0,@getFrame().canvas.width,@getFrame().canvas.height
+          context.drawImage @floating_selection.bg,0,0
+          context.drawImage @floating_selection.fg,@selection.x,@selection.y
+
+        @sprite.undo.pushState @sprite.clone()
+        @update()
+        @editor.spriteChanged()

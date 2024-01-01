@@ -5,6 +5,34 @@ this.SpriteView = (function() {
     this.canvas.width = 400;
     this.canvas.height = 400;
     this.sprite = new Sprite(32, 32);
+    this.canvas.addEventListener("touchstart", (function(_this) {
+      return function(event) {
+        if ((event.touches != null) && (event.touches[0] != null)) {
+          event.preventDefault();
+          event.touches[0].stopPropagation = function() {
+            return event.stopPropagation();
+          };
+          return _this.mouseDown(event.touches[0]);
+        }
+      };
+    })(this));
+    document.addEventListener("touchmove", (function(_this) {
+      return function(event) {
+        if ((event.touches != null) && (event.touches[0] != null)) {
+          return _this.mouseMove(event.touches[0]);
+        }
+      };
+    })(this));
+    document.addEventListener("touchend", (function(_this) {
+      return function(event) {
+        return _this.mouseUp();
+      };
+    })(this));
+    this.canvas.addEventListener("touchcancel", (function(_this) {
+      return function(event) {
+        return _this.mouseOut();
+      };
+    })(this));
     this.canvas.addEventListener("mousedown", (function(_this) {
       return function(event) {
         return _this.mouseDown(event);
@@ -201,10 +229,10 @@ this.SpriteView = (function() {
     }
   };
 
-  SpriteView.prototype.getPattern = function() {
+  SpriteView.prototype.addPattern = function() {
     var c, context, data, i, k, l, line, ref, ref1, value;
     if (this.pattern != null) {
-      return this.pattern;
+      return;
     }
     c = document.createElement("canvas");
     c.width = 64;
@@ -213,17 +241,28 @@ this.SpriteView = (function() {
     data = context.getImageData(0, 0, c.width, 1);
     for (line = k = 0, ref = c.height - 1; k <= ref; line = k += 1) {
       for (i = l = 0, ref1 = c.width - 1; l <= ref1; i = l += 1) {
-        value = 32 + Math.random() * 32;
+        value = 128 + Math.random() * 64 - 32;
         data.data[i * 4] = value;
         data.data[i * 4 + 1] = value;
         data.data[i * 4 + 2] = value;
-        data.data[i * 4 + 3] = 255;
+        data.data[i * 4 + 3] = 64;
       }
       context.putImageData(data, 0, line);
     }
-    this.pattern = c;
-    document.querySelector(".spriteeditor canvas").style["background-image"] = "url(" + (c.toDataURL()) + ")";
-    return document.querySelector(".spriteeditor canvas").style["background-repeat"] = "repeat";
+    this.pattern = c.toDataURL();
+    document.querySelector(".spriteeditor canvas").style["background-image"] = "url(" + this.pattern + ")";
+    document.querySelector(".spriteeditor canvas").style["background-repeat"] = "repeat";
+    return this.updateBackgroundColor();
+  };
+
+  SpriteView.prototype.updateBackgroundColor = function() {
+    var c;
+    if (this.editor.background_color_picker != null) {
+      c = this.editor.background_color_picker.color;
+      return document.querySelector(".spriteeditor canvas").style["background-color"] = c;
+    } else {
+      return document.querySelector(".spriteeditor canvas").style["background-color"] = "#000";
+    }
   };
 
   SpriteView.prototype.setColor = function(color) {
@@ -323,12 +362,12 @@ this.SpriteView = (function() {
   };
 
   SpriteView.prototype.update = function() {
-    var bs, context, f, grd, h, hblock, hoffset, i, j, k, l, m, mx, my, n, p, w, wblock, woffset;
+    var bs, context, f, grd, h, hblock, hoffset, i, j, k, l, m, mx, my, n, w, wblock, woffset;
     this.brush_size = this.editor.tool.getSize(this.sprite);
     context = this.canvas.getContext("2d");
     context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     context.imageSmoothingEnabled = false;
-    p = this.getPattern();
+    this.addPattern();
     if (this.sprite.frames.length > 1) {
       f = this.sprite.frames[(this.sprite.current_frame + this.sprite.frames.length - 1) % this.sprite.frames.length];
       context.globalAlpha = .2;
@@ -613,6 +652,7 @@ this.SpriteView = (function() {
           this.selection.y += y - this.mouse_y;
           this.mouse_x = x;
           this.mouse_y = y;
+          this.editor.setCoordinates(x, y);
           context = this.getFrame().getContext();
           context.clearRect(0, 0, this.getFrame().canvas.width, this.getFrame().canvas.height);
           context.drawImage(this.floating_selection.bg, 0, 0);
@@ -627,6 +667,7 @@ this.SpriteView = (function() {
         this.selection.y = Math.max(0, Math.min(this.sprite.height - this.selection.h, this.selection.y));
         this.mouse_x = x;
         this.mouse_y = y;
+        this.editor.setCoordinates(x, y);
         this.update();
       }
       return;
@@ -638,6 +679,7 @@ this.SpriteView = (function() {
     if (x !== this.mouse_x || y !== this.mouse_y) {
       this.mouse_x = x;
       this.mouse_y = y;
+      this.editor.setCoordinates(x, y);
       if (this.mousepressed) {
         if (this.tile) {
           x = Math.floor((x + this.sprite.width / 2) % this.sprite.width);
@@ -692,7 +734,115 @@ this.SpriteView = (function() {
 
   SpriteView.prototype.mouseOut = function(event) {
     this.mouse_over = false;
-    return this.update();
+    this.update();
+    return this.editor.setCoordinates(-1, -1);
+  };
+
+  SpriteView.prototype.flipSprite = function(direction) {
+    var bg, context, fg;
+    if (this.editor.tool.selectiontool) {
+      if (this.selection != null) {
+        if (this.sprite.undo == null) {
+          this.sprite.undo = new Undo();
+        }
+        if (this.sprite.undo.empty()) {
+          this.sprite.undo.pushState(this.sprite.clone());
+        }
+        fg = document.createElement("canvas");
+        fg.width = this.selection.w;
+        fg.height = this.selection.h;
+        context = fg.getContext("2d");
+        if (direction === "horizontal") {
+          context.translate(this.selection.w, 0);
+          context.scale(-1, 1);
+        } else {
+          context.translate(0, this.selection.h);
+          context.scale(1, -1);
+        }
+        if (this.floating_selection == null) {
+          context.drawImage(this.getFrame().canvas, -this.selection.x, -this.selection.y);
+          context = this.getFrame().canvas.getContext("2d");
+          context.clearRect(this.selection.x, this.selection.y, this.selection.w, this.selection.h);
+          bg = document.createElement("canvas");
+          bg.width = this.getFrame().canvas.width;
+          bg.height = this.getFrame().canvas.height;
+          bg.getContext("2d").drawImage(this.getFrame().canvas, 0, 0);
+          context.drawImage(fg, this.selection.x, this.selection.y);
+          this.floating_selection = {
+            bg: bg,
+            fg: fg
+          };
+        } else {
+          context.drawImage(this.floating_selection.fg, 0, 0);
+          this.floating_selection.fg = fg;
+          context = this.getFrame().getContext();
+          context.clearRect(0, 0, this.getFrame().canvas.width, this.getFrame().canvas.height);
+          context.drawImage(this.floating_selection.bg, 0, 0);
+          context.drawImage(this.floating_selection.fg, this.selection.x, this.selection.y);
+        }
+        this.sprite.undo.pushState(this.sprite.clone());
+        this.update();
+        return this.editor.spriteChanged();
+      }
+    }
+  };
+
+  SpriteView.prototype.rotateSprite = function(direction) {
+    var bg, context, cx, cy, fg, nh, nw, nx, ny;
+    if (this.editor.tool.selectiontool) {
+      if (this.selection != null) {
+        if (this.sprite.undo == null) {
+          this.sprite.undo = new Undo();
+        }
+        if (this.sprite.undo.empty()) {
+          this.sprite.undo.pushState(this.sprite.clone());
+        }
+        fg = document.createElement("canvas");
+        fg.width = this.selection.h;
+        fg.height = this.selection.w;
+        context = fg.getContext("2d");
+        context.translate(fg.width / 2, fg.height / 2);
+        context.rotate(direction * Math.PI / 2);
+        cx = this.selection.x + this.selection.w / 2;
+        cy = this.selection.y + this.selection.h / 2;
+        nw = this.selection.h;
+        nh = this.selection.w;
+        nx = Math.round(cx - nw / 2 + .01 * direction);
+        ny = Math.round(cy - nh / 2 + .01 * direction);
+        if (this.floating_selection == null) {
+          context.drawImage(this.getFrame().canvas, -this.selection.x - this.selection.w / 2, -this.selection.y - this.selection.h / 2);
+          context = this.getFrame().canvas.getContext("2d");
+          context.clearRect(this.selection.x, this.selection.y, this.selection.w, this.selection.h);
+          bg = document.createElement("canvas");
+          bg.width = this.getFrame().canvas.width;
+          bg.height = this.getFrame().canvas.height;
+          bg.getContext("2d").drawImage(this.getFrame().canvas, 0, 0);
+          context.drawImage(fg, nx, ny);
+          this.selection.x = nx;
+          this.selection.y = ny;
+          this.selection.w = nw;
+          this.selection.h = nh;
+          this.floating_selection = {
+            bg: bg,
+            fg: fg
+          };
+        } else {
+          context.drawImage(this.floating_selection.fg, -this.floating_selection.fg.width / 2, -this.floating_selection.fg.height / 2);
+          this.floating_selection.fg = fg;
+          this.selection.x = nx;
+          this.selection.y = ny;
+          this.selection.w = nw;
+          this.selection.h = nh;
+          context = this.getFrame().getContext();
+          context.clearRect(0, 0, this.getFrame().canvas.width, this.getFrame().canvas.height);
+          context.drawImage(this.floating_selection.bg, 0, 0);
+          context.drawImage(this.floating_selection.fg, this.selection.x, this.selection.y);
+        }
+        this.sprite.undo.pushState(this.sprite.clone());
+        this.update();
+        return this.editor.spriteChanged();
+      }
+    }
   };
 
   return SpriteView;

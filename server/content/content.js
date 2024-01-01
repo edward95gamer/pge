@@ -1,4 +1,4 @@
-var Forum, Project, Tag, Token, Translator, User, usage;
+var Cleaner, DEFAULT_CODE, Forum, Project, Tag, Token, Translator, User, usage;
 
 usage = require("pidusage");
 
@@ -14,6 +14,8 @@ Translator = require(__dirname + "/translator.js");
 
 Forum = require(__dirname + "/../forum/forum.js");
 
+Cleaner = require(__dirname + "/cleaner.js");
+
 this.Content = (function() {
   function Content(server, db, files) {
     this.server = server;
@@ -25,6 +27,7 @@ this.Content = (function() {
     this.tokens = {};
     this.projects = {};
     this.tags = {};
+    this.sorted_tags = [];
     this.project_count = 0;
     this.user_count = 0;
     this.guest_count = 0;
@@ -32,6 +35,8 @@ this.Content = (function() {
     this.hot_projects = [];
     this.top_projects = [];
     this.new_projects = [];
+    this.plugin_projects = [];
+    this.library_projects = [];
     this.updatePublicProjects();
     console.info("Content loaded: " + this.user_count + " users and " + this.project_count + " projects");
     this.top_interval = setInterval(((function(_this) {
@@ -46,14 +51,18 @@ this.Content = (function() {
     })(this)), 6000);
     this.translator = new Translator(this);
     this.forum = new Forum(this);
+    this.cleaner = new Cleaner(this);
+    if (this.files.converter != null) {
+      this.files.converter.start(this);
+    }
   }
 
   Content.prototype.close = function() {
     clearInterval(this.top_interval);
     clearInterval(this.log_interval);
     this.forum.close();
-    if (this.test_data != null) {
-      return this.test_data.close();
+    if (this.cleaner != null) {
+      return this.cleaner.stop();
     }
   };
 
@@ -153,6 +162,7 @@ this.Content = (function() {
       if (tag == null) {
         tag = new Tag(t);
         this.tags[t] = tag;
+        this.sorted_tags.push(tag);
       }
       tag.add(project);
     }
@@ -162,7 +172,9 @@ this.Content = (function() {
     var data, token;
     data = record.get();
     token = new Token(this, record);
-    this.tokens[token.value] = token;
+    if (token.user != null) {
+      this.tokens[token.value] = token;
+    }
     return token;
   };
 
@@ -186,20 +198,28 @@ this.Content = (function() {
     this.hot_projects = [];
     this.top_projects = [];
     this.new_projects = [];
+    this.plugin_projects = [];
+    this.library_projects = [];
     ref = this.projects;
     for (key in ref) {
       project = ref[key];
-      if (project["public"] && project.owner.flags["validated"] && !project.deleted && !project.owner.flags["censored"]) {
+      if (project["public"] && !project.unlisted && project.owner.flags["validated"] && !project.deleted && !project.owner.flags["censored"]) {
         this.hot_projects.push(project);
         this.top_projects.push(project);
         this.new_projects.push(project);
+        if (project.type === "plugin") {
+          this.plugin_projects.push(project);
+        }
+        if (project.type === "library") {
+          this.library_projects.push(project);
+        }
       }
     }
     return this.sortPublicProjects();
   };
 
   Content.prototype.sortPublicProjects = function() {
-    var maxAge, maxLikes, note, now, time;
+    var fade, maxLikes, note, now, time;
     time = Date.now();
     this.top_projects.sort(function(a, b) {
       return b.likes - a.likes;
@@ -207,17 +227,28 @@ this.Content = (function() {
     this.new_projects.sort(function(a, b) {
       return b.first_published - a.first_published;
     });
-    if (this.top_projects.length < 2 || this.new_projects.length < 2) {
+    this.sorted_tags.sort(function(a, b) {
+      return b.uses + b.num_users * 10 - a.uses - a.num_users * 10;
+    });
+    this.plugin_projects.sort(function(a, b) {
+      return b.likes - a.likes;
+    });
+    this.library_projects.sort(function(a, b) {
+      return b.likes - a.likes;
+    });
+    if (this.top_projects.length < 5) {
       return;
     }
     now = Date.now();
-    maxLikes = Math.max(1, this.top_projects[0].likes);
-    maxAge = now - this.new_projects[this.new_projects.length - 1].first_published;
+    maxLikes = Math.max(1, this.top_projects[4].likes);
+    fade = function(x) {
+      return 1 - Math.max(0, Math.min(1, x));
+    };
     note = function(p) {
-      var agemark, hours;
-      hours = Math.max(0, now - p.first_published) / 1000 / 3600;
-      agemark = Math.exp(-hours / 24 / 7);
-      return p.likes / maxLikes * 50 + 50 * agemark;
+      var rating, recent;
+      recent = fade((now - p.first_published) / 1000 / 3600 / 24 / 4);
+      rating = p.likes / maxLikes * (.15 + 2 * fade((now - p.first_published) / 1000 / 3600 / 24 / 180));
+      return recent + rating;
     };
     this.hot_projects.sort(function(a, b) {
       return note(b) - note(a);
@@ -231,7 +262,7 @@ this.Content = (function() {
     if (pub && project.first_published === 0) {
       project.set("first_published", Date.now());
     }
-    if (pub) {
+    if (pub && !project.unlisted) {
       if (this.hot_projects.indexOf(project) < 0) {
         this.hot_projects.push(project);
       }
@@ -239,7 +270,13 @@ this.Content = (function() {
         this.top_projects.push(project);
       }
       if (this.new_projects.indexOf(project) < 0) {
-        return this.new_projects.push(project);
+        this.new_projects.push(project);
+      }
+      if (project.type === "plugin" && this.plugin_projects.indexOf(project) < 0) {
+        this.plugin_projects.push(project);
+      }
+      if (project.type === "library" && this.library_projects.indexOf(project) < 0) {
+        return this.library_projects.push(project);
       }
     } else {
       index = this.hot_projects.indexOf(project);
@@ -252,7 +289,42 @@ this.Content = (function() {
       }
       index = this.new_projects.indexOf(project);
       if (index >= 0) {
-        return this.new_projects.splice(index, 1);
+        this.new_projects.splice(index, 1);
+      }
+      index = this.plugin_projects.indexOf(project);
+      if (index >= 0) {
+        this.plugin_projects.splice(index, 1);
+      }
+      index = this.library_projects.indexOf(project);
+      if (index >= 0) {
+        return this.library_projects.splice(index, 1);
+      }
+    }
+  };
+
+  Content.prototype.setProjectType = function(project, type) {
+    var index;
+    project.set("type", type);
+    if (project["public"]) {
+      if (project.type === "plugin") {
+        if (this.plugin_projects.indexOf(project) < 0) {
+          this.plugin_projects.push(project);
+        }
+      } else {
+        index = this.plugin_projects.indexOf(project);
+        if (index >= 0) {
+          this.plugin_projects.splice(index, 1);
+        }
+      }
+      if (project.type === "library") {
+        if (this.library_projects.indexOf(project) < 0) {
+          return this.library_projects.push(project);
+        }
+      } else {
+        index = this.library_projects.indexOf(project);
+        if (index >= 0) {
+          return this.library_projects.splice(index, 1);
+        }
       }
     }
   };
@@ -270,7 +342,15 @@ this.Content = (function() {
     }
     index = this.new_projects.indexOf(project);
     if (index >= 0) {
-      return this.new_projects.splice(index, 1);
+      this.new_projects.splice(index, 1);
+    }
+    index = this.plugin_projects.indexOf(project);
+    if (index >= 0) {
+      this.plugin_projects.splice(index, 1);
+    }
+    index = this.library_projects.indexOf(project);
+    if (index >= 0) {
+      return this.library_projects.splice(index, 1);
     }
   };
 
@@ -280,6 +360,7 @@ this.Content = (function() {
     if (tag == null) {
       tag = new Tag(t);
       this.tags[t] = tag;
+      this.sorted_tags.push(tag);
     }
     return tag.add(project);
   };
@@ -394,15 +475,25 @@ this.Content = (function() {
       owner: owner.id,
       orientation: data.orientation,
       aspect: data.aspect,
+      type: data.type,
+      language: data.language,
       graphics: data.graphics,
-      libs: data.libs
+      libs: data.libs,
+      tabs: data.tabs,
+      plugins: data.plugins,
+      libraries: data.libraries,
+      description: data.description || ""
     };
     record = this.db.create("projects", d);
     project = this.loadProject(record);
     if (empty) {
       return callback(project);
     } else {
-      content = "init = function()\nend\n\nupdate = function()\nend\n\ndraw = function()\nend";
+      if ((project.language != null) && (DEFAULT_CODE[project.language] != null)) {
+        content = DEFAULT_CODE[project.language];
+      } else {
+        content = DEFAULT_CODE.microscript;
+      }
       return this.files.write(owner.id + "/" + project.id + "/ms/main.ms", content, (function(_this) {
         return function() {
           return _this.files.copyFile("../static/img/defaultappicon.png", owner.id + "/" + project.id + "/sprites/icon.png", function() {
@@ -475,5 +566,12 @@ this.Content = (function() {
   return Content;
 
 })();
+
+DEFAULT_CODE = {
+  python: "def init():\n  pass\n\ndef update():\n  pass\n\ndef draw():\n  pass",
+  javascript: "init = function() {\n}\n\nupdate = function() {\n}\n\ndraw = function() {\n}",
+  lua: "init = function()\nend\n\nupdate = function()\nend\n\ndraw = function()\nend",
+  microscript: "init = function()\nend\n\nupdate = function()\nend\n\ndraw = function()\nend"
+};
 
 module.exports = this.Content;

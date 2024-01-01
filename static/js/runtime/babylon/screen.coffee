@@ -22,7 +22,7 @@ class @Screen
     @interface =
       width: @width
       height: @height
-      render: (scene)->scene.render()
+      render: (scene,camera) => @render(scene,camera)
 
   updateInterface:()->
     @interface.width = @width
@@ -104,17 +104,24 @@ class @Screen
     #@renderer.shadowMap.enabled = true
     #@renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
-    @renderer.render scene.scene,camera.camera
+    scene.render()
+    if @take_picture_callback?
+      @take_picture_callback @canvas.toDataURL()
+      @take_picture_callback = null
+
 
   startControl:(@element)->
-    @canvas.addEventListener "touchstart", (event) => @touchStart(event)
-    @canvas.addEventListener "touchmove", (event) => @touchMove(event)
+    document.addEventListener "touchstart", (event) => @touchStart(event)
+    document.addEventListener "touchmove", (event) => @touchMove(event)
     document.addEventListener "touchend" , (event) => @touchRelease(event)
     document.addEventListener "touchcancel" , (event) => @touchRelease(event)
 
-    @canvas.addEventListener "mousedown", (event) => @mouseDown(event)
-    @canvas.addEventListener "mousemove", (event) => @mouseMove(event)
+    document.addEventListener "mousedown", (event) => @mouseDown(event)
+    document.addEventListener "mousemove", (event) => @mouseMove(event)
     document.addEventListener "mouseup", (event) => @mouseUp(event)
+
+    document.addEventListener "mousewheel", (event)=>@mouseWheel(event)
+    document.addEventListener "DOMMouseScroll", (event)=>@mouseWheel(event)
 
     @ratio = devicePixelRatio
 
@@ -219,3 +226,13 @@ class @Screen
     @mouse.pressed = Math.min(1,@mouse.left+@mouse.right+@mouse.middle)
 
     false
+
+  mouseWheel:(e)->
+    e.preventDefault()
+
+    if e.wheelDelta < 0 or e.detail > 0
+      @wheel = -1
+    else
+      @wheel = 1
+
+  takePicture:(@take_picture_callback)->

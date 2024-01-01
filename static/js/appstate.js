@@ -74,22 +74,10 @@ this.AppState = (function() {
         } else {
           s = location.pathname.split("/");
           if ((s[2] != null) && (s[3] != null)) {
-            if (this.app.explore.projects != null) {
-              p = this.app.explore.findProject(s[2], s[3]);
-              if (p) {
-                this.app.explore.openProject(p);
-                return this.app.appui.setMainSection("explore");
-              }
-            } else {
-              return this.app.explore.update((function(_this) {
-                return function() {
-                  p = _this.app.explore.findProject(s[2], s[3]);
-                  if (p) {
-                    _this.app.explore.openProject(p);
-                    return _this.app.appui.setMainSection("explore");
-                  }
-                };
-              })(this));
+            p = this.app.explore.findProject(s[2], s[3]);
+            if (p) {
+              this.app.explore.openProject(p);
+              return this.app.appui.setMainSection("explore");
             }
           }
         }
@@ -157,6 +145,12 @@ this.AppState = (function() {
           history.replaceState({
             name: p
           }, "", location.pathname);
+          if (p === "explore") {
+            s = location.pathname.split("/")[2];
+            if (s === "library" || s === "plugin" || s === "tutorial" || s === "app" || s === "all") {
+              this.app.explore.setProjectType(s);
+            }
+          }
           return this.app.appui.setMainSection(((function(_this) {
             return function(p) {
               return {

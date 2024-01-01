@@ -13,14 +13,118 @@
   right: 0 ;
   bottom: 0 ;
   top: 0 ;
+  overflow: hidden ;
 }
+
+#terminal-debug-container {
+  position: absolute ;
+  left: 0 ;
+  right: 0 ;
+  bottom: 0 ;
+  top: 2px ;
+  overflow: hidden ;
+}
+
+
+#terminal-toolbar {
+  position: absolute ;
+  top: 0px ;
+  left: 0 ;
+  right: 0 ;
+  height: 40px ;
+  background: hsl(200,30%,30%);
+  overflow: hidden ;
+  white-space: nowrap;
+}
+#terminal-toolbar span {
+  margin-left: 20px ;
+}
+#terminal-toolbar * {
+  display: inline-block ;
+}
+#terminal-toolbar .buttons {
+  display: inline-block ;
+  margin-left: 60px ;
+}
+#terminal-toolbar .buttons div {
+  margin-left: 1px ;
+  padding: 10px 15px ;
+  cursor: pointer ;
+  background: hsl(160,50%,40%);
+}
+#terminal-toolbar .buttons div:hover  {
+  background: hsl(160,50%,60%);
+}
+
+#terminal-toolbar .buttons div:active  {
+  background: hsl(160,30%,30%);
+}
+#terminal-toolbar .buttons .selected,
+#terminal-toolbar .buttons div.selected:hover
+{
+  background: hsl(160,20%,35%);
+  cursor: default ;
+}
+#open-timemachine-button {
+  position: absolute;
+  right: 50px;
+  top: -9px;
+  bottom: 9px;
+  padding: 16px 8px 8px 8px;
+  background: hsl(180,50%,40%);
+  cursor: pointer;
+  border-radius: 10px;
+  box-shadow: 0 0 3px #000;
+}
+
+#open-debugger-button {
+  position: absolute;
+  right: -8px;
+  top: 4px;
+  bottom: 5px;
+  padding: 7px 16px 7px 11px;
+  background: hsl(300,30%,40%);
+  cursor: pointer;
+  border-radius: 10px;
+  box-shadow: 0 0 3px #000;
+}
+
+
+#console-options {
+  background: hsl(200,20%,20%);
+  display: block ;
+  line-height: 25px ;
+  white-space: nowrap;
+  color: rgba(255,255,255,.8);
+  position: absolute ;
+  top: 42px ;
+  left: 0 ;
+  right: 2px ;
+  height: 0px ;
+  transition-property: height ;
+  transition-duration: 0.5s ;
+  overflow: hidden ;
+}
+
+#console-options > div {
+  padding: 20px ;
+}
+
+
+
+#console-options label {
+  margin-left: 5px ;
+}
+
+
+
 #terminal-view {
   position: absolute ;
-  top:0 ;
+  top: 40px ;
   left: 0 ;
   right: 0 ;
   bottom: 40px ;
-  background: hsl(200,50%,12%) ;
+  background: hsl(200,50%,8%) ;
   font-family: "Ubuntu Mono";
   font-size: 16px;
   overflow: auto ;
@@ -76,23 +180,23 @@
   padding: 5px ;
   font-family: "Ubuntu Mono";
   font-size: 16px;
-  color: hsl(200,100%,80%);
+  color: hsl(200,80%,70%);
   user-select: text ;
 }
-#terminal-lines div {
+#terminal-lines div div {
   padding: 0 4px 0 18px ;
   white-space: pre-wrap ;
   line-height: 22px ;
 }
-#terminal-lines div.error {
-  color: hsl(20,100%,70%);
+#terminal-lines div div.error {
+  color: hsl(10,80%,70%);
 }
-#terminal-lines div.input {
+#terminal-lines div div.input {
   background: rgba(255,255,255,.05) ;
   border-radius: 3px ;
   padding: 0 4px ;
 }
-#terminal-lines div.input i {
+#terminal-lines div div.input i {
   opacity: .25 ;
 }
 .fa-ellipsis-v {

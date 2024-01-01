@@ -1,175 +1,275 @@
-class @AssetsManager
+class @AssetsManager extends Manager
   constructor:(@app)->
-    @viewer = new AssetViewer @
+    super(@app)
 
-  projectOpened:()->
-    @app.project.addListener @
-    #@setSelectedAsset null
+    @folder = "assets"
+    @item = "asset"
+    @list_change_event = "assetlist"
+    @get_item = "getAsset"
+    @use_thumbnails = true
+    @extensions = ["glb","obj","json","ttf","png","jpg","txt","csv"]
+    @update_list = "updateAssetList"
 
-  projectUpdate:(change)->
-    if change == "assetlist"
-      @rebuildAssetList()
+    @model_viewer = new ModelViewer @
+    @font_viewer = new FontViewer @
+    @image_viewer = new ImageViewer @
+    @text_viewer = new TextViewer @
+
+    @init()
+
+    document.querySelector("#capture-asset").addEventListener "click",()=>
+      if @asset?
+        switch @asset.ext
+          when "glb","obj" then @model_viewer.updateThumbnail()
+
+    @code_snippet = new CodeSnippet @app
 
   init:()->
-    return if @initialized
+    super()
+    @splitbar.initPosition(30)
 
-    @initialized = true
-    s = document.createElement "script"
-    s.src = "/lib/three.min.js"
-    document.body.appendChild s
+  update:()->
+    super()
 
-    s.onload = ()=>
-      s = document.createElement "script"
-      s.src = "/lib/GLTFLoader.js"
-      document.body.appendChild s
+  checkThumbnail:(asset,callback)->
+    url = asset.getThumbnailURL()
+    img = new Image
+    img.src = url
+    img.onload = ()=>
+      if img.width>0 and img.height>0
+        canvas = document.createElement "canvas"
+        canvas.width = 1
+        canvas.height = 1
+        ctx = canvas.getContext "2d"
+        ctx.drawImage img,-31,-31
+        data = ctx.getImageData 0,0,1,1
+        if data.data[3]>128
+          return
 
-    document.getElementById("assets-section").addEventListener "dragover",(event)=>
-      event.preventDefault()
-      #console.info event
+      callback()
 
-    document.getElementById("assets-section").addEventListener "drop",(event)=>
-      event.preventDefault()
-      try
-        list = []
-        for i in event.dataTransfer.items
-          list.push i.getAsFile()
+  selectedItemRenamed:()->
+    if @selected_item? and @viewer?
+      @viewer.updateSnippet()
 
-        if list.length>0
-          file = list[0]
-          @fileDropped(file)
-      catch err
-        console.error err
-
-    @name_validator = new InputValidator document.getElementById("asset-name"),
-      document.getElementById("asset-name-button"),
-      null,
-      (value)=>
-        if @dropped_model?
-          name = value[0].toLowerCase()
-          if RegexLib.filename.test(name) and not @app.project.getAsset(name)?
-            @app.project.addPendingChange @
-            @app.client.sendRequest {
-              name: "write_project_file"
-              project: @app.project.id
-              file: "assets/#{name}.glb"
-              properties: {}
-              content: @dropped_model
-              thumbnail: @viewer.getThumbnail()
-            },(msg)=>
-              console.info msg
-              @app.project.removePendingChange(@)
-              @app.project.updateAssetList()
-
-            delete @dropped_model
-            document.getElementById("asset-name").disabled = true
-            @name_validator.validate()
-
-    @name_validator.accept_initial = true
-    @name_validator.auto_reset = false
-
-    document.getElementById("delete-asset").addEventListener "click",()=>
-      @deleteAsset()
-
-  fileDropped:(file)->
-    console.info "processing #{file.name}"
-    reader = new FileReader()
-    reader.addEventListener "load",()=>
-      console.info "file read, size = "+ reader.result.length
-      @viewer.view(reader.result)
-      @dropped_model = reader.result.split(",")[1]
-      console.info "file size = " +@dropped_model.length
-      @name_validator.set file.name.split(".")[0]
-      @name_validator.change()
-      document.getElementById("asset-name").disabled = false
-
-    reader.readAsDataURL(file)
-      #url = "data:application/javascript;base64,"+btoa(Audio.processor)
-
-  createAssetBox:(asset)->
-    element = document.createElement "div"
-    element.classList.add "asset-box"
-    element.classList.add "large"
-    element.setAttribute "id","project-asset-#{asset.name}"
-    element.setAttribute "title",asset.name
-    if asset.name == @selected_asset
-      element.classList.add "selected"
-
-    iconbox = document.createElement "div"
-    iconbox.classList.add("icon-box")
-
-    icon = new Image
-    icon.src = asset.getThumbnailURL()
-    icon.setAttribute "id","asset-image-#{asset.name}"
-    iconbox.appendChild icon
-    element.appendChild iconbox
-
-    element.appendChild document.createElement "br"
-
-    text = document.createElement "span"
-    text.innerHTML = asset.name
-
-    element.appendChild text
-
-    element.addEventListener "click",()=>
-      @openAsset asset.name
-
-    activeuser = document.createElement "i"
-    activeuser.classList.add "active-user"
-    activeuser.classList.add "fa"
-    activeuser.classList.add "fa-user"
-    element.appendChild activeuser
-    element
-
-  rebuildAssetList:()->
-    list = document.getElementById "asset-list"
-    list.innerHTML = ""
-
-    for s in @app.project.asset_list
-      element = @createAssetBox s
-      list.appendChild element
-
-    #@updateActiveUsers()
-    if @selected_asset? and not @app.project.getAsset(@selected_asset)?
-      @setSelectedAsset null
+  selectedItemDeleted:()->
+    parent = document.getElementById "asset-viewer"
+    for e in parent.childNodes
+      e.style.display = "none"
+    @viewer = null
+    @asset = null
+    @code_snippet.clear()
     return
 
-  openAsset:(name)->
-    asset = @app.project.getAsset name
-    if asset?
-      @setSelectedAsset name
-      @viewer.view asset.getURL()
+  openItem:(name)->
+    super(name)
+    @asset = @app.project.getAsset(name)
+    console.info @asset
+    parent = document.getElementById "asset-viewer"
+    for e in parent.childNodes
+      e.style.display = "none"
 
-  setSelectedAsset:(asset)->
-    @selected_asset = asset
-    list = document.getElementById("asset-list").childNodes
+    if @asset?
+      switch @asset.ext
+        when "ttf"
+          @font_viewer.view @asset
+          @viewer = @font_viewer
 
-    if @selected_asset?
-      for e in list
-        if e.getAttribute("id") == "project-asset-#{asset}"
-          e.classList.add("selected")
-        else
-          e.classList.remove("selected")
+        when "glb","obj"
+          @model_viewer.view @asset
+          @viewer = @model_viewer
 
-      document.getElementById("asset-name").value = asset
-      @name_validator.update()
-      document.getElementById("asset-name").disabled = true
-      @viewer.resize()
+        when "json","txt","csv"
+          @text_viewer.view @asset
+          @viewer = @text_viewer
+
+        when "png","jpg"
+          @image_viewer.view @asset
+          @viewer = @image_viewer
+
+
+  createAsset:(folder)->
+    input = document.createElement "input"
+    input.type = "file"
+    #input.accept = ".glb"
+    input.addEventListener "change",(event)=>
+      files = event.target.files
+      if files.length>=1
+        for f in files
+          @fileDropped(f,folder)
+      return
+
+    input.click()
+
+  fileDropped:(file,folder)->
+    console.info "processing #{file.name}"
+    console.info "folder: "+folder
+    reader = new FileReader()
+
+    split = file.name.split(".")
+    name = split[0]
+    ext = split[split.length-1]
+    return if not ext in @extensions
+
+    reader.addEventListener "load",()=>
+      console.info "file read, size = "+ reader.result.length
+      return if reader.result.length>6000000
+
+
+      name = @findNewFilename name,"getAsset",folder
+      if folder? then name = folder.getFullDashPath()+"-"+name
+      if folder? then folder.setOpen true
+
+      canvas = document.createElement "canvas"
+      canvas.width = canvas.height = 64
+
+      asset = @app.project.createAsset(name,canvas.toDataURL(),reader.result.length,ext)
+      asset.uploading = true
+
+      if ext in ["json","csv","txt"]
+        asset.local_text = reader.result
+      else
+        asset.local_url = reader.result
+
+      @setSelectedItem name
+      @openItem name
+
+      if ext in ["json","csv","txt"]
+        data = reader.result
+      else
+        data = reader.result.split(",")[1]
+
+      @app.project.addPendingChange @
+
+      @app.client.sendRequest {
+        name: "write_project_file"
+        project: @app.project.id
+        file: "assets/#{name}.#{ext}"
+        properties: {}
+        content: data
+        thumbnail: canvas.toDataURL().split(",")[1]
+      },(msg)=>
+        console.info msg
+        @app.project.removePendingChange(@)
+        asset.uploading = false
+        delete asset.local_url
+        @app.project.updateAssetList()
+        @checkNameFieldActivation()
+
+    if ext in ["json","csv","txt"]
+      reader.readAsText(file)
     else
-      for e in list
-        e.classList.remove("selected")
-      document.getElementById("asset-name").value = ""
+      reader.readAsDataURL(file)
 
-  deleteAsset:()->
-    if @selected_asset?
-      a = @app.project.getAsset @selected_asset
-      if a?
-        if confirm "Really delete #{@selected_asset}?"
-          @app.client.sendRequest {
-            name: "delete_project_file"
-            project: @app.project.id
-            file: a.file
-            thumbnail: true
-          },(msg)=>
-            @app.project.updateAssetList()
-            @viewer.clear()
-            @setSelectedAsset null
+  updateAssetIcon:(asset,canvas)->
+    context = canvas.getContext "2d"
+    color = switch asset.ext
+      when "ttf" then "hsl(200,50%,60%)"
+      when "json" then "hsl(0,50%,60%)"
+      when "csv" then "hsl(60,50%,60%)"
+      when "txt" then "hsl(160,50%,60%)"
+      when "glb" then "hsl(300,50%,60%)"
+      when "obj" then "hsl(240,50%,70%)"
+      else "hsl(0,0%,60%)"
+
+    w = canvas.width
+    h = canvas.height
+    context.fillStyle = "#222"
+    context.fillRect(w-30,h-16,30,16)
+    context.fillStyle = color
+    context.fillRect(0,h-2,w,2)
+    context.font = "7pt sans-serif"
+    context.fillText "#{asset.ext.toUpperCase()}",w-26,h-5
+
+    asset.thumbnail_url = canvas.toDataURL()
+
+    @app.client.sendRequest {
+      name: "write_project_file"
+      project: @app.project.id
+      file: "assets/#{asset.name}.#{asset.ext}"
+      thumbnail: canvas.toDataURL().split(",")[1]
+    },(msg)=>
+      console.info msg
+
+    if asset.element?
+      asset.element.querySelector("img").src = canvas.toDataURL()
+
+class @CodeSnippet
+  constructor:(@app)->
+
+    copyable = true
+
+    @container = document.querySelector "#asset-load-code"
+    @input = document.querySelector "#asset-load-code input"
+    @select = document.querySelector "#asset-load-code select"
+
+    @select.addEventListener "change",()=>
+      @setIndex @select.selectedIndex
+
+    document.querySelector("#asset-load-code i").addEventListener "click",()=>
+      return if not copyable
+      input = document.querySelector("#asset-load-code input")
+      copy = document.querySelector("#asset-load-code i")
+      code = input.value
+      navigator.clipboard.writeText code
+      input.value = @app.translator.get "Copied!"
+      copyable = false
+
+      copy.classList.remove "fa-copy"
+      copy.classList.add "fa-check"
+
+      setTimeout (()=>
+        copy.classList.remove "fa-check"
+        copy.classList.add "fa-copy"
+        input.value = code
+        copyable = true),1000
+
+  clear:()->
+    @select.innerHTML = ""
+    @input.value = ""
+    @container.style.display = "none"
+
+  set:(@list)->
+    @clear()
+    for snippet,i in @list
+      name = @app.translator.get snippet.name
+      value = snippet.value
+      option = document.createElement "option"
+      option.value = i
+      option.innerText = name
+      @select.appendChild option
+
+      if i==0
+        @input.value = snippet.value
+    @container.style.display = "block"
+
+  setIndex:(index)->
+    if @list? and index<@list.length
+      @input.value = @list[index].value
+
+class @CodeSnippetField
+  constructor:(@app,query)->
+    @element = document.querySelector query
+    @input = @element.querySelector "input"
+    @i = @element.querySelector("i")
+
+    copyable = true
+    @i.addEventListener "click",()=>
+      return if not copyable
+
+      code = @input.value
+      navigator.clipboard.writeText code
+      @input.value = @app.translator.get "Copied!"
+      copyable = false
+
+      @i.classList.remove "fa-copy"
+      @i.classList.add "fa-check"
+
+      setTimeout (()=>
+        @i.classList.remove "fa-check"
+        @i.classList.add "fa-copy"
+        @input.value = @code
+        copyable = true),1000
+
+  set:(@code)->
+    @input.value = @code

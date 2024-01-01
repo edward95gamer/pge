@@ -1,9 +1,12 @@
 this.Player = (function() {
-  function Player() {
+  function Player(listener) {
     var i, len, ref, source;
+    this.listener = listener;
     this.source_count = 0;
     this.sources = {};
     this.resources = resources;
+    this.request_id = 1;
+    this.pending_requests = {};
     if (resources.sources != null) {
       ref = resources.sources;
       for (i = 0, len = ref.length; i < len; i++) {
@@ -89,6 +92,8 @@ this.Player = (function() {
           results.push(this.runtime.updateSource(file, src, false));
         }
         return results;
+      } else if (this.runtime.stopped) {
+        return this.runtime.drawCall();
       }
     }
   };
@@ -121,24 +126,40 @@ this.Player = (function() {
     });
   };
 
+  Player.prototype.codePaused = function() {
+    return this.postMessage({
+      name: "code_paused"
+    });
+  };
+
+  Player.prototype.exit = function() {
+    return this.postMessage({
+      name: "exit"
+    });
+  };
+
   Player.prototype.messageReceived = function(msg) {
-    var code, data, err, file, res;
+    var code, data, err, file;
     data = msg.data;
     try {
       data = JSON.parse(data);
       switch (data.name) {
         case "command":
-          res = this.runtime.runCommand(data.line);
-          if (!data.line.trim().startsWith("print")) {
-            return this.postMessage({
-              name: "output",
-              data: res,
-              id: data.id
-            });
-          }
-          break;
+          return this.runtime.runCommand(data.line, (function(_this) {
+            return function(res) {
+              if (!data.line.trim().startsWith("print")) {
+                return _this.postMessage({
+                  name: "output",
+                  data: res,
+                  id: data.id
+                });
+              }
+            };
+          })(this));
         case "pause":
           return this.runtime.stop();
+        case "step_forward":
+          return this.runtime.stepForward();
         case "resume":
           return this.runtime.resume();
         case "code_updated":
@@ -154,6 +175,32 @@ this.Player = (function() {
         case "map_updated":
           file = data.file;
           return this.runtime.updateMap(file, 0, data.data);
+        case "take_picture":
+          this.runtime.screen.takePicture((function(_this) {
+            return function(pic) {
+              return _this.postMessage({
+                name: "picture_taken",
+                data: pic
+              });
+            };
+          })(this));
+          if (this.runtime.stopped) {
+            return this.runtime.drawCall();
+          }
+          break;
+        case "time_machine":
+          return this.runtime.time_machine.messageReceived(data);
+        case "watch":
+          return this.runtime.watch(data.list);
+        case "stop_watching":
+          return this.runtime.stopWatching();
+        default:
+          if (data.request_id != null) {
+            if (this.pending_requests[data.request_id] != null) {
+              this.pending_requests[data.request_id](data);
+              return delete this.pending_requests[data.request_id];
+            }
+          }
       }
     } catch (error1) {
       err = error1;
@@ -161,20 +208,48 @@ this.Player = (function() {
     }
   };
 
-  Player.prototype.postMessage = function(data) {
-    if (window !== window.parent) {
-      return window.parent.postMessage(JSON.stringify(data), "*");
+  Player.prototype.call = function(name, args) {
+    if ((this.runtime != null) && (this.runtime.vm != null)) {
+      return this.runtime.vm.call(name, args);
     }
+  };
+
+  Player.prototype.setGlobal = function(name, value) {
+    if ((this.runtime != null) && (this.runtime.vm != null)) {
+      return this.runtime.vm.context.global[name] = value;
+    }
+  };
+
+  Player.prototype.exec = function(command, callback) {
+    if (this.runtime != null) {
+      return this.runtime.runCommand(command, callback);
+    }
+  };
+
+  Player.prototype.postMessage = function(data) {
+    var err;
+    if (window !== window.parent) {
+      window.parent.postMessage(JSON.stringify(data), "*");
+    }
+    if (this.listener != null) {
+      try {
+        return this.listener(data);
+      } catch (error1) {
+        err = error1;
+        return console.error(err);
+      }
+    }
+  };
+
+  Player.prototype.postRequest = function(data, callback) {
+    data.request_id = this.request_id;
+    this.pending_requests[this.request_id++] = callback;
+    return this.postMessage(data);
   };
 
   return Player;
 
 })();
-
-window.addEventListener("load", function() {
-  window.player = new Player();
-  return document.body.focus();
-});
 
 if ((navigator.serviceWorker != null) && !window.skip_service_worker) {
   navigator.serviceWorker.register('sw.js', {

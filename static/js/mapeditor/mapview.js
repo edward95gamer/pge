@@ -5,6 +5,34 @@ this.MapView = (function() {
     this.canvas.width = 400;
     this.canvas.height = 400;
     this.map = new MicroMap(24, 16, 16, 16, {});
+    this.canvas.addEventListener("touchstart", (function(_this) {
+      return function(event) {
+        if ((event.touches != null) && (event.touches[0] != null)) {
+          event.preventDefault();
+          event.touches[0].stopPropagation = function() {
+            return event.stopPropagation();
+          };
+          return _this.mouseDown(event.touches[0]);
+        }
+      };
+    })(this));
+    document.addEventListener("touchmove", (function(_this) {
+      return function(event) {
+        if ((event.touches != null) && (event.touches[0] != null)) {
+          return _this.mouseMove(event.touches[0]);
+        }
+      };
+    })(this));
+    document.addEventListener("touchend", (function(_this) {
+      return function(event) {
+        return _this.mouseUp();
+      };
+    })(this));
+    this.canvas.addEventListener("touchcancel", (function(_this) {
+      return function(event) {
+        return _this.mouseOut();
+      };
+    })(this));
     this.canvas.addEventListener("mousedown", (function(_this) {
       return function(event) {
         return _this.mouseDown(event);
@@ -38,6 +66,7 @@ this.MapView = (function() {
     this.editable = false;
     this.sprite = "icon";
     this.cells_drawn = 0;
+    this.updateLoop();
   }
 
   MapView.prototype.setSprite = function(sprite) {
@@ -99,6 +128,18 @@ this.MapView = (function() {
     return this.canvas.style["margin-top"] = h + "px";
   };
 
+  MapView.prototype.updateLoop = function() {
+    requestAnimationFrame((function(_this) {
+      return function() {
+        return _this.updateLoop();
+      };
+    })(this));
+    if (this.needs_update) {
+      this.needs_update = false;
+      return this.update();
+    }
+  };
+
   MapView.prototype.update = function() {
     var c, context, hblock, i, k, l, m, n, ref, ref1, ref2, ref3, th, tw, underlay, wblock;
     context = this.canvas.getContext("2d");
@@ -115,7 +156,7 @@ this.MapView = (function() {
       if (underlay != null) {
         underlay.update();
         context.globalAlpha = .3;
-        context.drawImage(underlay.getCanvas(), 0, 0, this.canvas.width, this.canvas.height);
+        underlay.draw(context, 0, 0, this.canvas.width, this.canvas.height);
         context.globalAlpha = 1;
       }
     }
@@ -149,7 +190,10 @@ this.MapView = (function() {
       context.stroke();
     }
     this.map.update();
-    context.drawImage(this.map.getCanvas(), 0, 0, this.canvas.width, this.canvas.height);
+    this.map.draw(context, 0, 0, this.canvas.width, this.canvas.height);
+    if ((this.map.animated != null) && this.map.animated.length > 0) {
+      this.needs_update = true;
+    }
     if (this.mouse_over) {
       tw = 1;
       th = 1;

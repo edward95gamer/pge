@@ -68,14 +68,11 @@ class @DocEditor
     @ignore_changes = true
     @editor.setValue(doc,-1)
     @ignore_changes = false
+    @editor.getSession().setUndoManager(new ace.UndoManager())
     @checkTutorial()
 
   checkTutorial:()->
-    src = @editor.getValue()
-    if src.startsWith("# Tutorial")
+    if @app.project? and @app.project.type == "tutorial"
       document.getElementById("doceditor-start-tutorial").style.display = "block"
-      @app.options.setType("tutorial")
     else
       document.getElementById("doceditor-start-tutorial").style.display = "none"
-      return if src.length == 0
-      @app.options.setType("app")

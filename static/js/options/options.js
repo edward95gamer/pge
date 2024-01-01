@@ -1,8 +1,9 @@
-var indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
+var DEFAULT_CODE,
+  indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 this.Options = (function() {
   function Options(app) {
-    var fn, i, input, len, list;
+    var advanced, fn, i, input, len, list;
     this.app = app;
     this.textInput("projectoption-name", (function(_this) {
       return function(value) {
@@ -29,9 +30,33 @@ this.Options = (function() {
         return _this.aspectChanged(value);
       };
     })(this));
+    this.selectInput("projectoption-type", (function(_this) {
+      return function(value) {
+        return _this.typeChanged(value);
+      };
+    })(this));
     this.selectInput("projectoption-graphics", (function(_this) {
       return function(value) {
         return _this.graphicsChanged(value);
+      };
+    })(this));
+    this.selectInput("projectoption-language", (function(_this) {
+      return function(value) {
+        return _this.languageChanged(value);
+      };
+    })(this));
+    advanced = document.getElementById("advanced-project-options-button");
+    advanced.addEventListener("click", (function(_this) {
+      return function() {
+        if (advanced.classList.contains("open")) {
+          advanced.classList.remove("open");
+          document.getElementById("advanced-project-options").style.display = "none";
+          return advanced.childNodes[1].innerText = _this.app.translator.get("Show advanced options");
+        } else {
+          advanced.classList.add("open");
+          document.getElementById("advanced-project-options").style.display = "block";
+          return advanced.childNodes[1].innerText = _this.app.translator.get("Hide advanced options");
+        }
       };
     })(this));
     this.app.appui.setAction("add-project-user", (function(_this) {
@@ -72,6 +97,7 @@ this.Options = (function() {
       input = list[i];
       fn(input);
     }
+    this.library_tip = document.querySelector("#project-option-type .library");
   }
 
   Options.prototype.textInput = function(element, action) {
@@ -96,13 +122,16 @@ this.Options = (function() {
 
   Options.prototype.projectOpened = function() {
     var e, i, input, j, len, len1, lib, list, ref;
-    PixelatedImage.setURL(document.getElementById("projectoptions-icon"), this.app.project.getFullURL() + "icon.png", 160);
+    document.getElementById("projectoptions-icon").src = this.app.project.getFullURL() + "icon.png";
     document.getElementById("projectoption-name").value = this.app.project.title;
     this.project_slug_validator.set(this.app.project.slug);
     document.getElementById("projectoption-slugprefix").innerText = location.origin.replace(".dev", ".io") + ("/" + this.app.project.owner.nick + "/");
     document.getElementById("projectoption-orientation").value = this.app.project.orientation;
     document.getElementById("projectoption-aspect").value = this.app.project.aspect;
+    document.getElementById("projectoption-type").value = this.app.project.type || "app";
     document.getElementById("projectoption-graphics").value = this.app.project.graphics || "M1";
+    document.getElementById("projectoption-language").value = this.app.project.language || "microscript_v1_i";
+    this.library_tip.style.display = this.app.project.type === "library" ? "block" : "none";
     list = document.querySelectorAll("#project-option-libs input");
     for (i = 0, len = list.length; i < len; i++) {
       input = list[i];
@@ -119,7 +148,11 @@ this.Options = (function() {
     this.updateSecretCodeLine();
     this.updateUserList();
     this.app.project.addListener(this);
-    return document.querySelector("#projectoptions-users").style.display = this.app.user.flags.guest ? "none" : "block";
+    if (window.ms_standalone || this.app.user.flags.guest) {
+      return document.querySelector("#projectoptions-users-content").style.display = "none";
+    } else {
+      return document.querySelector("#projectoptions-users-content").style.display = "block";
+    }
   };
 
   Options.prototype.updateSecretCodeLine = function() {
@@ -211,9 +244,25 @@ this.Options = (function() {
     })(this));
   };
 
+  Options.prototype.typeChanged = function(value) {
+    this.app.project.setType(value);
+    this.library_tip.style.display = value === "library" ? "block" : "none";
+    this.app.client.sendRequest({
+      name: "set_project_option",
+      project: this.app.project.id,
+      option: "type",
+      value: value
+    }, (function(_this) {
+      return function(msg) {};
+    })(this));
+    this.app.tab_manager.resetPlugins();
+    return this.app.lib_manager.resetLibs();
+  };
+
   Options.prototype.graphicsChanged = function(value) {
     this.app.project.setGraphics(value);
-    this.app.client.sendRequest({
+    this.app.debug.updateDebuggerVisibility();
+    return this.app.client.sendRequest({
       name: "set_project_option",
       project: this.app.project.id,
       option: "graphics",
@@ -221,7 +270,49 @@ this.Options = (function() {
     }, (function(_this) {
       return function(msg) {};
     })(this));
-    return this.app.appui.updateAllowedSections();
+  };
+
+  Options.prototype.languageChanged = function(value) {
+    if (value !== this.app.project.language) {
+      if (this.app.project.source_list.length === 1 && this.app.project.source_list[0].content.split("\n").length < 20) {
+        if (!this.app.project.language.startsWith("microscript") || !value.startsWith("microscript")) {
+          ConfirmDialog.confirm(this.app.translator.get("Your current code will be overwritten. Do you wish to proceed?"), this.app.translator.get("OK"), this.app.translator.get("Cancel"), ((function(_this) {
+            return function() {
+              _this.app.project.setLanguage(value);
+              _this.app.editor.updateLanguage();
+              _this.app.debug.updateDebuggerVisibility();
+              if (DEFAULT_CODE[value] != null) {
+                _this.app.editor.setCode(DEFAULT_CODE[value]);
+              } else {
+                _this.app.editor.setCode(DEFAULT_CODE["microscript"]);
+              }
+              _this.app.editor.editorContentsChanged();
+              return _this.setLanguage(value);
+            };
+          })(this)), ((function(_this) {
+            return function() {
+              return document.getElementById("projectoption-language").value = _this.app.project.language;
+            };
+          })(this)));
+          return;
+        }
+      }
+      return this.setLanguage(value);
+    }
+  };
+
+  Options.prototype.setLanguage = function(value) {
+    this.app.project.setLanguage(value);
+    this.app.editor.updateLanguage();
+    this.app.debug.updateDebuggerVisibility();
+    return this.app.client.sendRequest({
+      name: "set_project_option",
+      project: this.app.project.id,
+      option: "language",
+      value: value
+    }, (function(_this) {
+      return function(msg) {};
+    })(this));
   };
 
   Options.prototype.setType = function(type) {
@@ -293,3 +384,10 @@ this.Options = (function() {
   return Options;
 
 })();
+
+DEFAULT_CODE = {
+  python: "def init():\n  pass\n\ndef update():\n  pass\n\ndef draw():\n  pass",
+  javascript: "init = function() {\n}\n\nupdate = function() {\n}\n\ndraw = function() {\n}",
+  lua: "init = function()\nend\n\nupdate = function()\nend\n\ndraw = function()\nend",
+  microscript: "init = function()\nend\n\nupdate = function()\nend\n\ndraw = function()\nend"
+};

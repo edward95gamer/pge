@@ -1,31 +1,11 @@
 class @MicroMap
-  constructor:(@width,@height,@block_width,@block_height,@sprites)->
+  constructor:(@width,@height,@block_width,@block_height)->
+    @sprites = window.player.runtime.sprites
+
     @map = []
-    if @width? and typeof @width == "string"
-      @ready = false
-      req = new XMLHttpRequest()
-      req.onreadystatechange = (event) =>
-        if req.readyState == XMLHttpRequest.DONE
-          @ready = true
-          if req.status == 200
-            @load req.responseText,@sprites
-            @update()
-
-          if @loaded?
-            @loaded()
-
-      req.open "GET",@width
-      req.send()
-
-      @width = 10
-      @height = 10
-      @block_width = 10
-      @block_height = 10
-    else
-      @ready = true
+    @ready = true
 
     @clear()
-    @update()
 
   clear:()->
     for j in [0..@height-1] by 1
@@ -35,17 +15,36 @@ class @MicroMap
 
   set:(x,y,ref)->
     if x>=0 and x<@width and y>=0 and y<@height
+      if typeof ref == "string"
+        ref = ref.replace /\//g,"-"
       @map[x+y*@width] = ref
       @needs_update = true
 
   get:(x,y)->
     return 0 if x<0 or y<0 or x>=@width or y>=@height
-    @map[x+y*@width] or 0
+    c = @map[x+y*@width]
+    if typeof c == "string"
+      c = c.replace /-/g,"/"
+    c or 0
 
   getCanvas:()->
     if not @canvas? or @needs_update
       @update()
     @canvas
+
+  draw:(context,x,y,w,h)->
+    context.drawImage @getCanvas(),x,y,w,h
+    if @animated? and @animated.length>0
+      time = Date.now()
+      for a in @animated
+        len = a.sprite.frames.length
+        c = a.sprite.frames[Math.floor(time/1000*a.sprite.fps)%len].canvas
+        if a.tx?
+          context.drawImage c,a.tx,a.ty,@block_width,@block_height,x+w*a.x,y+h*a.y,a.w*w,a.h*h
+        else
+          context.drawImage c,x+w*a.x,y+h*a.y,a.w*w,a.h*h
+
+    return
 
   update:()->
     @needs_update = false
@@ -59,6 +58,8 @@ class @MicroMap
     context = @canvas.getContext "2d"
     context.clearRect 0,0,@canvas.width,@canvas.height
 
+    @animated = []
+
     for j in [0..@height-1] by 1
       for i in [0..@width-1] by 1
         index = i+(@height-1-j)*@width
@@ -66,7 +67,25 @@ class @MicroMap
         if s? and s.length>0
           s = s.split(":")
           sprite = @sprites[s[0]]
+          if not sprite?
+            sprite = @sprites[s[0].replace(/-/g,"/")]
           if sprite? and sprite.frames[0]?
+            if sprite.frames.length>1
+              a =
+                x: @block_width*i/@canvas.width
+                y: @block_height*j/@canvas.height
+                w: @block_width/@canvas.width
+                h: @block_height/@canvas.height
+                sprite: sprite
+
+              if s[1]?
+                xy = s[1].split(",")
+                a.tx = xy[0]*@block_width
+                a.ty = xy[1]*@block_height
+
+              @animated.push a
+              continue
+
             if s[1]?
               xy = s[1].split(",")
               tx = xy[0]*@block_width
@@ -81,45 +100,8 @@ class @MicroMap
 
     return
 
-  resize:(w,h,@block_width=@block_width,@block_height=@block_height)->
-    map = []
-    for j in [0..h-1] by 1
-      for i in [0..w-1] by 1
-        if j<@height and i<@width
-          map[i+j*w] = @map[i+j*@width]
-        else
-          map[i+j*w] = null
 
-    @map = map
-    @width = w
-    @height = h
 
-  save:()->
-    index = 1
-    list = [0]
-    table = {}
-    for j in [0..@height-1] by 1
-      for i in [0..@width-1] by 1
-        s = @map[i+j*@width]
-        if s? and s.length>0 and not table[s]?
-          list.push s
-          table[s] = index++
-
-    map = []
-    for j in [0..@height-1] by 1
-      for i in [0..@width-1] by 1
-        s = @map[i+j*@width]
-        map[i+j*@width] = if s? and s.length>0 then table[s] else 0
-
-    data =
-      width: @width
-      height: @height
-      block_width: @block_width
-      block_height: @block_height
-      sprites: list
-      data: map
-
-    JSON.stringify data
 
   loadFile:(url)->
     req = new XMLHttpRequest()
@@ -149,17 +131,6 @@ class @MicroMap
 
     return
 
-  @loadMap:(data,sprites)->
-    data = JSON.parse data
-    map = new MicroMap(data.width,data.height,data.block_width,data.block_height,sprites)
-    for j in [0..data.height-1] by 1
-      for i in [0..data.width-1] by 1
-        s = data.data[i+j*data.width]
-        if s>0
-          map.map[i+j*data.width] = data.sprites[s]
-
-    map
-
   clone:()->
     map = new MicroMap(@width,@height,@block_width,@block_height,@sprites)
     for j in [0..@height-1] by 1
@@ -179,3 +150,70 @@ class @MicroMap
         @map[i+j*@width] = map.map[i+j*@width]
     @update()
     @
+
+
+@LoadMap = (url,loaded)->
+  map = new MicroMap(1,1,1,1)
+  map.ready = false
+
+  req = new XMLHttpRequest()
+  req.onreadystatechange = (event) =>
+    if req.readyState == XMLHttpRequest.DONE
+      map.ready = true
+      if req.status == 200
+        UpdateMap map,req.responseText
+
+      map.needs_update = true
+
+      if loaded?
+        loaded()
+
+  req.open "GET",url
+  req.send()
+  map
+
+@UpdateMap = (map,data)->
+  data = JSON.parse data
+
+  map.width = data.width
+  map.height = data.height
+  map.block_width = data.block_width
+  map.block_height = data.block_height
+
+  for j in [0..data.height-1] by 1
+    for i in [0..data.width-1] by 1
+      s = data.data[i+j*data.width]
+      if s>0
+        map.map[i+j*data.width] = data.sprites[s]
+      else
+        map.map[i+j*data.width] = null
+
+  map.needs_update = true
+  map
+
+@SaveMap = (map)->
+  index = 1
+  list = [0]
+  table = {}
+  for j in [0..map.height-1] by 1
+    for i in [0..map.width-1] by 1
+      s = map.map[i+j*map.width]
+      if s? and s.length>0 and not table[s]?
+        list.push s
+        table[s] = index++
+
+  m = []
+  for j in [0..map.height-1] by 1
+    for i in [0..map.width-1] by 1
+      s = map.map[i+j*map.width]
+      m[i+j*map.width] = if s? and s.length>0 then table[s] else 0
+
+  data =
+    width: map.width
+    height: map.height
+    block_width: map.block_width
+    block_height: map.block_height
+    sprites: list
+    data: m
+
+  JSON.stringify data
